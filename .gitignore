@@ -1,0 +1,80 @@
+# ---- Node / Capacitor (web layer) ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm/
+.yarn/
+.yarn-integrity
+
+# Build output
+dist/
+build/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vite/
+out/
+
+# Capacitor-generated web bundle (copied into android/ios at build time)
+www/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+.envrc
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ---- Android ----
+android/.gradle/
+android/.idea/
+android/build/
+android/app/build/
+android/app/release/
+android/captures/
+android/local.properties
+android/gradle.properties.local
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Firebase / FCM service config (Desmond wires this per [2C-06] and [2C-05])
+android/app/google-services.json
+
+# Gradle
+.gradle/
+gradle-app.setting
+gradlew.bat.orig
+
+# Signing material — NEVER commit keystores
+*.keystore
+*.jks
+key.properties
+release-signing.properties
+
+# IDE project metadata
+*.iml
+
+# ---- iOS (future parity, kept here so the rule exists) ----
+ios/App/App/public/
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+*.xcuserdata
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+
+# ---- Local artifacts ----
+*.log
+coverage/
+.nyc_output/
