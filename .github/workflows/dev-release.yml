@@ -1,0 +1,134 @@
+name: Dev Release
+
+# Dev-channel pipeline for the two-channel distribution model.
+# Every push to `develop` builds a debug-signed APK and publishes it to
+# GitHub Releases as a pre-release tagged `develop-{short-sha}`.
+# See docs/RELEASE.md for the full two-channel model.
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dev-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build debug APK and publish dev pre-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-34
+            build-tools;35.0.0
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Regenerate debug keystore
+        # The debug keystore is gitignored per [2C-11] (see android/keystore/README.md).
+        # CI regenerates it deterministically with the documented command — no secrets needed.
+        run: |
+          mkdir -p android/keystore
+          keytool -genkey -v \
+            -keystore android/keystore/debug.keystore \
+            -storepass android \
+            -alias brain3-companion-debug \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=BRAIN Companion Debug, OU=Flux Meridian, O=Flux Meridian, L=Unknown, S=Unknown, C=US"
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Sync Capacitor (Android)
+        run: npx cap sync android
+
+      - name: Build debug APK
+        # Note: invokes ./gradlew directly rather than `npm run android:build:debug`,
+        # which is Windows-shell specific (.\gradlew.bat) per [2C-11] settled decision.
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          short_sha="${GITHUB_SHA:0:7}"
+          build_date="$(date -u +%Y-%m-%d)"
+          {
+            echo "short_sha=${short_sha}"
+            echo "build_date=${build_date}"
+            echo "tag=develop-${short_sha}"
+            echo "title=Dev build ${short_sha} (${build_date})"
+          } >> "$GITHUB_OUTPUT"
+          # Capture the commit subject to a file so newlines/quotes are preserved
+          # without needing to escape them through shell variables.
+          git log -1 --pretty=%s "$GITHUB_SHA" > .commit-subject
+
+      - name: Compose release notes
+        run: |
+          {
+            echo "Automated dev pre-release built from \`develop\`."
+            echo ""
+            echo "**Channel:** Dev (experimental). See [docs/RELEASE.md](https://github.com/${{ github.repository }}/blob/develop/docs/RELEASE.md) for what dev pre-releases mean."
+            echo ""
+            echo "**Source commit:** [\`${{ steps.meta.outputs.short_sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
+            echo ""
+            echo "**Commit message:**"
+            echo ""
+            echo "> $(cat .commit-subject)"
+          } > .release-notes
+
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.meta.outputs.tag }}" \
+            android/app/build/outputs/apk/debug/app-debug.apk \
+            --title "${{ steps.meta.outputs.title }}" \
+            --notes-file .release-notes \
+            --prerelease \
+            --target "$GITHUB_SHA"
+
+      - name: Prune old dev pre-releases (keep last 10)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Sort all develop-* releases by createdAt descending, keep the
+          # 10 newest, delete the rest. --cleanup-tag removes the git tag too.
+          gh release list --limit 1000 --json tagName,createdAt \
+            | jq -r 'sort_by(.createdAt) | reverse | .[] | select(.tagName | startswith("develop-")) | .tagName' \
+            | tail -n +11 \
+            | while read -r tag; do
+                if [ -n "$tag" ]; then
+                  echo "Pruning old dev pre-release: $tag"
+                  gh release delete "$tag" --yes --cleanup-tag
+                fi
+              done
