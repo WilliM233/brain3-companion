@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BRAIN Companion</string>
+    <string name="title_activity_main">BRAIN Companion</string>
+    <string name="package_name">com.fluxmeridian.brain3companion</string>
+    <string name="custom_url_scheme">com.fluxmeridian.brain3companion</string>
+</resources>
