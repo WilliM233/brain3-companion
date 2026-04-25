@@ -1,0 +1,7 @@
+{
+  "name": "brain3-companion",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}
