@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>BRAIN Companion mark — placeholder</title>
+  <g fill="#F0A848">
+    <rect x="312" y="212" width="120" height="600" rx="14" />
+    <path d="M432 212 L562 212 A150 150 0 0 1 562 512 L432 512 Z" />
+    <path d="M432 512 L562 512 A150 150 0 0 1 562 812 L432 812 Z" />
+  </g>
+</svg>
