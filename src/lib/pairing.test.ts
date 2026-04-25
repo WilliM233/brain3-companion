@@ -16,7 +16,7 @@ import {
   loadPairing,
   savePairing,
   subscribePairing,
-} from '../../src/lib/pairing';
+} from './pairing';
 
 const store = new Map<string, string>();
 
