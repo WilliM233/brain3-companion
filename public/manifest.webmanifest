@@ -1,0 +1,23 @@
+{
+  "name": "BRAIN Companion",
+  "short_name": "BRAIN",
+  "description": "ADHD-aware personal OS — notifications, habits, routines.",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0B0714",
+  "background_color": "#0B0714",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
