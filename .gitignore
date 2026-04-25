@@ -46,6 +46,7 @@ android/local.properties
 android/gradle.properties.local
 android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json
+android/keystore/*.keystore
 
 # Firebase / FCM service config (Desmond wires this per [2C-06] and [2C-05])
 android/app/google-services.json
