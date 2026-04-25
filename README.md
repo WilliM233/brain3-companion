@@ -50,6 +50,15 @@ npx cap sync android
 npx cap open android
 ```
 
+## Releases
+
+`brain3-companion` ships through two distribution channels:
+
+- **Dev** (experimental) — auto-built on every push to `develop` by [`.github/workflows/dev-release.yml`](.github/workflows/dev-release.yml). Published as a GitHub **pre-release** tagged `develop-{short-sha}`. The 10 most recent dev pre-releases are kept; older ones are pruned automatically. Treat these as "every check is green and the APK builds clean" — not as hand-tested formal builds.
+- **Release** (formal) — manual ceremony on `main`, signed with L's release keystore (off-repo, password-protected). Tagged `v{semver}`.
+
+See [`docs/RELEASE.md`](docs/RELEASE.md) for the full two-channel model, the release ceremony, keystore handling, and sideloading instructions. All builds — both channels — are sideload-only; no Play Store distribution. Browse all builds on the [Releases page](https://github.com/WilliM233/brain3-companion/releases).
+
 ## Project layout
 
 ```
