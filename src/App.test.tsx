@@ -1,8 +1,24 @@
-import { test, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { test, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
-test('renders the scaffold message on the home route', () => {
+vi.mock('@capacitor/preferences', () => ({
+  Preferences: {
+    get: vi.fn(async () => ({ value: null })),
+    set: vi.fn(),
+    remove: vi.fn(),
+  },
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+test('mounts and redirects first-run users to the Settings screen', async () => {
   render(<App />);
-  expect(screen.getByText(/BRAIN Companion · Phase 2 scaffold/)).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(screen.getByText('Server URL')).toBeInTheDocument();
+    expect(screen.getByText('Bearer Token')).toBeInTheDocument();
+  });
 });

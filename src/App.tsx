@@ -1,7 +1,11 @@
-import { Redirect, Route } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Route, useHistory } from 'react-router-dom';
 import { IonApp, IonRouterOutlet, setupIonicReact } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 import HomePage from './pages/HomePage';
+import SettingsPage from './pages/SettingsPage';
+import PairedPlaceholderPage from './pages/PairedPlaceholderPage';
+import { loadPairing } from './lib/pairing';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -28,15 +32,36 @@ import './theme/tailwind.css';
 
 setupIonicReact();
 
+const RootRedirect: React.FC = () => {
+  const history = useHistory();
+  useEffect(() => {
+    let cancelled = false;
+    loadPairing().then((pairing) => {
+      if (cancelled) return;
+      history.replace(pairing ? '/paired-placeholder' : '/settings');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [history]);
+  return null;
+};
+
 const App: React.FC = () => (
   <IonApp>
     <IonReactRouter>
       <IonRouterOutlet>
+        <Route exact path="/settings">
+          <SettingsPage />
+        </Route>
+        <Route exact path="/paired-placeholder">
+          <PairedPlaceholderPage />
+        </Route>
         <Route exact path="/home">
           <HomePage />
         </Route>
         <Route exact path="/">
-          <Redirect to="/home" />
+          <RootRedirect />
         </Route>
       </IonRouterOutlet>
     </IonReactRouter>
