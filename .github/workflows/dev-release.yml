@@ -41,9 +41,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platforms;android-34
-            build-tools;35.0.0
+          # `packages` is a single string parsed as space-separated entries.
+          # A multi-line block scalar (`|`) embeds the newline literally and
+          # sdkmanager treats the value as one concatenated package name —
+          # see #31. Keep this on one line.
+          packages: 'platforms;android-34 build-tools;35.0.0'
 
       - name: Install npm dependencies
         run: npm ci
