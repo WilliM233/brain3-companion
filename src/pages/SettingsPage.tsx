@@ -22,6 +22,8 @@ import {
   savePairing,
   type Pairing,
 } from '../lib/pairing';
+import { pingHealth } from '../lib/health';
+import ConnectionIndicator from '../components/ConnectionIndicator';
 
 const MIN_TOKEN_LENGTH = 8;
 
@@ -47,6 +49,7 @@ const SettingsPage: React.FC = () => {
   const [showToken, setShowToken] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -91,11 +94,31 @@ const SettingsPage: React.FC = () => {
   const handleConnect = async () => {
     if (!canConnect) return;
     setSubmitting(true);
+    setUrlError(null);
+    setTokenError(null);
+    setFormError(null);
     try {
-      await savePairing(trimmedUrl, trimmedToken);
-      // [2C-13] hooks the validation ping in here before navigation; until
-      // then we route directly to the post-pair landing screen.
-      history.replace('/paired-placeholder');
+      const result = await pingHealth(trimmedUrl, trimmedToken);
+      if (result.ok) {
+        await savePairing(trimmedUrl, trimmedToken);
+        setToastMessage('Connected to BRAIN');
+        history.replace('/paired-placeholder');
+        return;
+      }
+      switch (result.reason) {
+        case 'unauthorized':
+          setTokenError('Token invalid. Check and try again.');
+          break;
+        case 'network':
+        case 'timeout':
+          setFormError("Couldn't reach server. Check URL and network.");
+          break;
+        case 'server':
+          setFormError(
+            `Server returned an error (${result.statusCode ?? 'unknown'}). Try again in a moment.`,
+          );
+          break;
+      }
     } catch {
       setToastMessage('Could not save pairing. Try again.');
     } finally {
@@ -111,6 +134,7 @@ const SettingsPage: React.FC = () => {
     setShowToken(false);
     setUrlError(null);
     setTokenError(null);
+    setFormError(null);
   };
 
   return (
@@ -118,6 +142,7 @@ const SettingsPage: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonTitle>Settings</IonTitle>
+          <ConnectionIndicator slot="end" />
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">
@@ -191,6 +216,16 @@ const SettingsPage: React.FC = () => {
             {tokenError ? (
               <IonNote color="danger" className="ion-padding-start">
                 {tokenError}
+              </IonNote>
+            ) : null}
+
+            {formError ? (
+              <IonNote
+                color="danger"
+                className="ion-padding-start"
+                role="alert"
+              >
+                {formError}
               </IonNote>
             ) : null}
 

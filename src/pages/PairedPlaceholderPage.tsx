@@ -1,4 +1,5 @@
 import { IonContent, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react';
+import ConnectionIndicator from '../components/ConnectionIndicator';
 
 const PairedPlaceholderPage: React.FC = () => {
   return (
@@ -6,6 +7,7 @@ const PairedPlaceholderPage: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonTitle>Paired</IonTitle>
+          <ConnectionIndicator slot="end" />
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">
