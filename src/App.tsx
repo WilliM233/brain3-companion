@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Route, useHistory } from 'react-router-dom';
 import { IonApp, IonRouterOutlet, setupIonicReact } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import HomePage from './pages/HomePage';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SettingsPage from './pages/SettingsPage';
 import PairedPlaceholderPage from './pages/PairedPlaceholderPage';
 import { loadPairing } from './lib/pairing';
@@ -32,6 +32,8 @@ import './theme/tailwind.css';
 
 setupIonicReact();
 
+const queryClient = new QueryClient();
+
 const RootRedirect: React.FC = () => {
   const history = useHistory();
   useEffect(() => {
@@ -48,24 +50,23 @@ const RootRedirect: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  <IonApp>
-    <IonReactRouter>
-      <IonRouterOutlet>
-        <Route exact path="/settings">
-          <SettingsPage />
-        </Route>
-        <Route exact path="/paired-placeholder">
-          <PairedPlaceholderPage />
-        </Route>
-        <Route exact path="/home">
-          <HomePage />
-        </Route>
-        <Route exact path="/">
-          <RootRedirect />
-        </Route>
-      </IonRouterOutlet>
-    </IonReactRouter>
-  </IonApp>
+  <QueryClientProvider client={queryClient}>
+    <IonApp>
+      <IonReactRouter>
+        <IonRouterOutlet>
+          <Route exact path="/settings">
+            <SettingsPage />
+          </Route>
+          <Route exact path="/paired-placeholder">
+            <PairedPlaceholderPage />
+          </Route>
+          <Route exact path="/">
+            <RootRedirect />
+          </Route>
+        </IonRouterOutlet>
+      </IonReactRouter>
+    </IonApp>
+  </QueryClientProvider>
 );
 
 export default App;
