@@ -128,7 +128,7 @@ const SettingsPage: React.FC = () => {
       if (result.ok) {
         await savePairing(trimmedUrl, trimmedToken);
         setToastMessage('Connected to BRAIN');
-        history.replace('/paired-placeholder');
+        history.replace('/notifications');
         return;
       }
       switch (result.reason) {
