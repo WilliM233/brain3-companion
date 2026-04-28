@@ -4,7 +4,7 @@ import { IonApp, IonRouterOutlet, setupIonicReact } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SettingsPage from './pages/SettingsPage';
-import PairedPlaceholderPage from './pages/PairedPlaceholderPage';
+import NotificationsPage from './pages/NotificationsPage';
 import { loadPairing, subscribePairing } from './lib/pairing';
 import {
   clearDeviceRegistration,
@@ -45,7 +45,7 @@ const RootRedirect: React.FC = () => {
     let cancelled = false;
     loadPairing().then((pairing) => {
       if (cancelled) return;
-      history.replace(pairing ? '/paired-placeholder' : '/settings');
+      history.replace(pairing ? '/notifications' : '/settings');
     });
     return () => {
       cancelled = true;
@@ -94,8 +94,8 @@ const App: React.FC = () => (
           <Route exact path="/settings">
             <SettingsPage />
           </Route>
-          <Route exact path="/paired-placeholder">
-            <PairedPlaceholderPage />
+          <Route exact path="/notifications">
+            <NotificationsPage />
           </Route>
           <Route exact path="/">
             <RootRedirect />
