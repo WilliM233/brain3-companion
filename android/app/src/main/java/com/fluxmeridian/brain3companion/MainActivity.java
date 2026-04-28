@@ -12,7 +12,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         BridgeHolder.INSTANCE.detach(getBridge());
         super.onDestroy();
     }
