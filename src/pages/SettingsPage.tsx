@@ -23,6 +23,12 @@ import {
   type Pairing,
 } from '../lib/pairing';
 import { pingHealth } from '../lib/health';
+import {
+  getRegistrationStatus,
+  reRegisterDevice,
+  subscribeRegistration,
+  type RegistrationStatus,
+} from '../lib/device-registration';
 import ConnectionIndicator from '../components/ConnectionIndicator';
 
 const MIN_TOKEN_LENGTH = 8;
@@ -40,6 +46,15 @@ function maskToken(token: string): string {
   return `****${token.slice(-4)}`;
 }
 
+function fcmTokenPreview(status: RegistrationStatus): string {
+  if (status.kind === 'registered') {
+    return `…${status.fcmToken.slice(-8)}`;
+  }
+  if (status.kind === 'pending') return 'Registering…';
+  if (status.kind === 'permission_denied') return 'Push permission denied';
+  return 'Not registered';
+}
+
 const SettingsPage: React.FC = () => {
   const history = useHistory();
   const [storedPairing, setStoredPairing] = useState<Pairing | null>(null);
@@ -52,6 +67,9 @@ const SettingsPage: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [registration, setRegistration] = useState<RegistrationStatus>(
+    getRegistrationStatus(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +82,14 @@ const SettingsPage: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    return subscribeRegistration((status) => setRegistration(status));
+  }, []);
+
+  const handleReRegister = () => {
+    void reRegisterDevice();
+  };
 
   const trimmedUrl = url.trim();
   const trimmedToken = token.trim();
@@ -172,6 +198,42 @@ const SettingsPage: React.FC = () => {
             >
               Re-pair
             </IonButton>
+
+            <section
+              aria-label="Device"
+              className="ion-margin-top"
+            >
+              <IonItem>
+                <IonLabel>
+                  <h2>Device</h2>
+                  <IonText color="medium">
+                    <p>{fcmTokenPreview(registration)}</p>
+                  </IonText>
+                  {registration.kind === 'error' ? (
+                    <IonText color="danger" role="alert">
+                      <p>Device registration failed — pull to retry</p>
+                    </IonText>
+                  ) : null}
+                  {registration.kind === 'permission_denied' ? (
+                    <IonText color="warning">
+                      <p>
+                        Push permission denied. Enable notifications in system
+                        settings, then tap Re-register.
+                      </p>
+                    </IonText>
+                  ) : null}
+                </IonLabel>
+              </IonItem>
+              <IonButton
+                expand="block"
+                fill="outline"
+                color="medium"
+                className="ion-margin-top"
+                onClick={handleReRegister}
+              >
+                Re-register
+              </IonButton>
+            </section>
           </section>
         ) : (
           <section aria-label="Pairing form">
@@ -239,9 +301,6 @@ const SettingsPage: React.FC = () => {
             </IonButton>
           </section>
         )}
-
-        {/* Device section — [2C-08] anchor: render FCM token preview + Re-register button here. */}
-        <IonItem className="ion-margin-top" aria-label="Device section placeholder" />
 
         <IonToast
           isOpen={toastMessage !== null}
