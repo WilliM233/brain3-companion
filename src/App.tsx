@@ -10,6 +10,7 @@ import {
   clearDeviceRegistration,
   runDeviceRegistration,
 } from './lib/device-registration';
+import { initWriteQueue } from './lib/writeQueue';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -75,10 +76,19 @@ const DeviceRegistrar: React.FC = () => {
   return null;
 };
 
+const WriteQueueRunner: React.FC = () => {
+  useEffect(() => {
+    const teardown = initWriteQueue();
+    return () => teardown();
+  }, []);
+  return null;
+};
+
 const App: React.FC = () => (
   <QueryClientProvider client={queryClient}>
     <IonApp>
       <DeviceRegistrar />
+      <WriteQueueRunner />
       <IonReactRouter>
         <IonRouterOutlet>
           <Route exact path="/settings">
