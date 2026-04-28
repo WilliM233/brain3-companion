@@ -50,6 +50,7 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion"
     implementation project(':capacitor-android')
+    implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
     testImplementation "junit:junit:$junitVersion"
     testImplementation 'org.json:json:20240303'
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
