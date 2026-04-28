@@ -5,7 +5,11 @@ import { IonReactRouter } from '@ionic/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SettingsPage from './pages/SettingsPage';
 import PairedPlaceholderPage from './pages/PairedPlaceholderPage';
-import { loadPairing } from './lib/pairing';
+import { loadPairing, subscribePairing } from './lib/pairing';
+import {
+  clearDeviceRegistration,
+  runDeviceRegistration,
+} from './lib/device-registration';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -49,9 +53,32 @@ const RootRedirect: React.FC = () => {
   return null;
 };
 
+const DeviceRegistrar: React.FC = () => {
+  useEffect(() => {
+    let cancelled = false;
+    loadPairing().then((pairing) => {
+      if (cancelled || !pairing) return;
+      void runDeviceRegistration(pairing);
+    });
+    const unsubscribe = subscribePairing((pairing) => {
+      if (pairing) {
+        void runDeviceRegistration(pairing);
+      } else {
+        void clearDeviceRegistration();
+      }
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+  return null;
+};
+
 const App: React.FC = () => (
   <QueryClientProvider client={queryClient}>
     <IonApp>
+      <DeviceRegistrar />
       <IonReactRouter>
         <IonRouterOutlet>
           <Route exact path="/settings">
