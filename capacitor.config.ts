@@ -5,6 +5,9 @@ const config: CapacitorConfig = {
   appName: 'BRAIN Companion',
   webDir: 'dist',
   plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
     SplashScreen: {
       backgroundColor: '#0B0714',
       showSpinner: false,
