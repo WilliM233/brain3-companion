@@ -50,6 +50,22 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Inject google-services.json for Firebase
+        # Decode the base64-encoded google-services.json from a repo secret so
+        # the gms plugin runs at gradle-time and bakes Firebase resources
+        # (google_app_id, etc.) into the APK. The grep guard fails the build
+        # loudly if the secret is missing or malformed — closing the silent
+        # try/catch skip at android/app/build.gradle:63-70 that hid this bug
+        # class on every CI build prior to [2C-Bug-05].
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+          if ! grep -q '"project_id"' android/app/google-services.json; then
+            echo "::error::google-services.json injection failed — file is empty or malformed."
+            exit 1
+          fi
+
       - name: Regenerate debug keystore
         # The debug keystore is gitignored per [2C-11] (see android/keystore/README.md).
         # CI regenerates it deterministically with the documented command — no secrets needed.
