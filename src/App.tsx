@@ -11,6 +11,7 @@ import {
   runDeviceRegistration,
 } from './lib/device-registration';
 import { initWriteQueue } from './lib/writeQueue';
+import { initCompletionQueues } from './lib/completionQueues';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -78,8 +79,12 @@ const DeviceRegistrar: React.FC = () => {
 
 const WriteQueueRunner: React.FC = () => {
   useEffect(() => {
-    const teardown = initWriteQueue();
-    return () => teardown();
+    const teardownNotifications = initWriteQueue();
+    const teardownCompletions = initCompletionQueues();
+    return () => {
+      teardownNotifications();
+      teardownCompletions();
+    };
   }, []);
   return null;
 };

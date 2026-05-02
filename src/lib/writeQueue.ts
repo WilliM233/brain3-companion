@@ -1,24 +1,23 @@
 /**
- * Canned-response offline queue for [2C-07].
+ * Generic offline write-queue factory and the [2C-07] canned-response queue
+ * built on top of it.
  *
- * The native [CannedResponseReceiver] persists each tapped response to
- * `brain.writeQueue` in `@capacitor/preferences` storage and (when the
- * WebView is alive) fires a `brainCannedResponse` window event. This module
- * owns the HTTP POST to BRAIN, the in-order flush, and the failure-handling
- * contract:
+ * The factory ({@link createWriteQueue}) extracts the queue primitive that
+ * [2C-07] introduced — `@capacitor/preferences`-backed JSON array, in-order
+ * flush, halt-on-failure, soft cap warning — into a generic helper reusable
+ * for habit and routine completion writes ([2C-23]) and any future write
+ * pipeline that needs the same offline-first shape.
  *
- * - 200 / 201 → entry removed.
- * - 409 → drop entry. If the server returned a different existing response
- *   ([2C-03]'s "legitimate conflict" branch), surface a {@link ConflictWarning}
- *   to subscribers. Same-response idempotency is a server-side 200 per
- *   [2C-03], so a 409 here always indicates a different existing response.
- * - Any other failure (5xx, network, timeout) → entry stays at the head of
- *   the queue, flush stops to preserve enqueue order.
+ * The `[2C-07]` notification-response queue is preserved as a concrete
+ * instance of the factory: the `brain.writeQueue` Preferences key, the
+ * `WriteQueueEntry` shape, the 200/201/409/error flush semantics, conflict
+ * warning emission, and the `initWriteQueue` trigger wiring all behave
+ * identically to the pre-refactor module. Callers of `enqueueResponse`,
+ * `flushWriteQueue`, `subscribeConflicts`, and `initWriteQueue` see no
+ * observable change.
  *
- * Flush is gated on both an active pairing (URL + bearer token from
- * `pairing.ts`) and a registered FCM token (`brain.deviceRegisteredToken`
- * from [2C-08]). When either is missing, queued entries wait until both are
- * present — registration completion triggers a flush automatically.
+ * See {@link createWriteQueue} for the factory shape and
+ * {@link ./completionQueues} for habit/routine consumers.
  */
 
 import { App } from '@capacitor/app';
@@ -34,6 +33,152 @@ export const WRITE_QUEUE_KEY = 'brain.writeQueue';
 export const BRIDGE_EVENT_NAME = 'brainCannedResponse';
 export const QUEUE_SOFT_CAP = 500;
 
+// ---------------------------------------------------------------------------
+// Generic factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-entry flush outcome returned by an adapter's {@link WriteQueueAdapter.flushOne}.
+ *
+ * - `remove` — server delivered the entry (200/201, idempotent re-confirm).
+ *   The entry is dropped from the queue and counted as delivered.
+ * - `discard` — entry is unrecoverable (404 not-found, 4xx terminal-rejection)
+ *   and must be dropped to keep the queue moving. Flush continues, but the
+ *   entry is *not* counted as delivered. Adapters typically surface a warning
+ *   alongside a discard so the UI can flag what happened.
+ * - `stop` — transient failure (network, 5xx, timeout). The entry stays at
+ *   the head of the queue and the flush halts to preserve enqueue order.
+ */
+export type FlushOutcome =
+  | { kind: 'remove' }
+  | { kind: 'discard' }
+  | { kind: 'stop' };
+
+export interface WriteQueueAdapter<T> {
+  /**
+   * Process a single entry. Should be throw-free — wrap the network call so
+   * exceptions become `{ kind: 'stop' }`.
+   */
+  flushOne(entry: T): Promise<FlushOutcome>;
+  /**
+   * Optional pre-flush gate. Return `false` to no-op the flush (pairing
+   * missing, device not registered, etc.). Defaults to always-flush.
+   */
+  shouldFlush?(): Promise<boolean>;
+  /**
+   * Optional sync hook fired once per non-coalesced flush, after `shouldFlush`
+   * passes and before the first `flushOne`. Adapters use this to reset
+   * per-flush state (e.g., conflict counters). Coalesced flushes skip it.
+   */
+  beforeFlush?(): void;
+}
+
+export interface QueueFlushSummary {
+  attempted: number;
+  delivered: number;
+  remaining: number;
+  /**
+   * `true` when this call returned without doing work because another flush
+   * for the same queue was already in flight. Wrappers that aggregate
+   * adapter-side state (e.g., conflict counters) should ignore that state on
+   * coalesced calls — the in-flight flush owns the counter.
+   */
+  coalesced: boolean;
+}
+
+export interface WriteQueueInstance<T> {
+  enqueue(entry: T): Promise<void>;
+  peek(): Promise<T[]>;
+  flush(): Promise<QueueFlushSummary>;
+  clear(): Promise<void>;
+}
+
+/**
+ * Build a write queue persisted to `@capacitor/preferences` under `key` and
+ * flushed via `adapter`. Each instance owns its own concurrency guard — a
+ * second call to `flush()` while one is in flight returns immediately with a
+ * zero-attempt summary rather than racing the queue.
+ */
+export function createWriteQueue<T>(
+  key: string,
+  adapter: WriteQueueAdapter<T>,
+): WriteQueueInstance<T> {
+  let flushing = false;
+
+  async function load(): Promise<T[]> {
+    const { value } = await Preferences.get({ key });
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function save(queue: T[]): Promise<void> {
+    await Preferences.set({ key, value: JSON.stringify(queue) });
+  }
+
+  async function enqueue(entry: T): Promise<void> {
+    const queue = await load();
+    queue.push(entry);
+    if (queue.length > QUEUE_SOFT_CAP) {
+      console.warn(
+        `[writeQueue:${key}] size ${queue.length} exceeds soft cap ${QUEUE_SOFT_CAP}`,
+      );
+    }
+    await save(queue);
+  }
+
+  async function flush(): Promise<QueueFlushSummary> {
+    if (flushing) {
+      const remaining = (await load()).length;
+      return { attempted: 0, delivered: 0, remaining, coalesced: true };
+    }
+    flushing = true;
+    try {
+      if (adapter.shouldFlush) {
+        const ok = await adapter.shouldFlush();
+        if (!ok) {
+          const remaining = (await load()).length;
+          return { attempted: 0, delivered: 0, remaining, coalesced: false };
+        }
+      }
+      adapter.beforeFlush?.();
+      let queue = await load();
+      let attempted = 0;
+      let delivered = 0;
+      while (queue.length > 0) {
+        const entry = queue[0]!;
+        attempted += 1;
+        const outcome = await adapter.flushOne(entry);
+        if (outcome.kind === 'stop') break;
+        queue = queue.slice(1);
+        await save(queue);
+        if (outcome.kind === 'remove') delivered += 1;
+      }
+      return { attempted, delivered, remaining: queue.length, coalesced: false };
+    } finally {
+      flushing = false;
+    }
+  }
+
+  async function clear(): Promise<void> {
+    await save([]);
+  }
+
+  async function peek(): Promise<T[]> {
+    return load();
+  }
+
+  return { enqueue, peek, flush, clear };
+}
+
+// ---------------------------------------------------------------------------
+// [2C-07] canned-response queue — concrete instance of the factory
+// ---------------------------------------------------------------------------
+
 export interface WriteQueueEntry {
   notification_id: string;
   response: string;
@@ -47,11 +192,17 @@ export interface ConflictWarning {
   server_response: string;
 }
 
+/**
+ * Public summary returned by {@link flushWriteQueue}. Preserves [2C-07]'s
+ * pre-refactor shape — `coalesced` is stripped by the wrapper since callers
+ * historically didn't see it. The `conflicts` count is tracked by the
+ * notification adapter via a closure-scoped counter.
+ */
 export interface FlushSummary {
   attempted: number;
   delivered: number;
-  conflicts: number;
   remaining: number;
+  conflicts: number;
 }
 
 type ConflictListener = (warning: ConflictWarning) => void;
@@ -69,35 +220,7 @@ function emitConflict(warning: ConflictWarning): void {
   for (const listener of conflictListeners) listener(warning);
 }
 
-async function loadQueue(): Promise<WriteQueueEntry[]> {
-  const { value } = await Preferences.get({ key: WRITE_QUEUE_KEY });
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? (parsed as WriteQueueEntry[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveQueue(queue: WriteQueueEntry[]): Promise<void> {
-  await Preferences.set({
-    key: WRITE_QUEUE_KEY,
-    value: JSON.stringify(queue),
-  });
-}
-
-export async function enqueueResponse(entry: WriteQueueEntry): Promise<void> {
-  const queue = await loadQueue();
-  queue.push(entry);
-  if (queue.length > QUEUE_SOFT_CAP) {
-    // Soft cap — log only. Spec says "do not drop" beyond cap.
-    console.warn(
-      `[writeQueue] size ${queue.length} exceeds soft cap ${QUEUE_SOFT_CAP}`,
-    );
-  }
-  await saveQueue(queue);
-}
+let pendingConflicts = 0;
 
 async function postResponse(
   pairing: Pairing,
@@ -120,70 +243,9 @@ async function postResponse(
   );
 }
 
-let flushing = false;
-
-/**
- * Drain the queue in enqueue order. Concurrent calls coalesce: a second call
- * while a flush is in flight returns immediately rather than racing the queue.
- */
-export async function flushWriteQueue(): Promise<FlushSummary> {
-  if (flushing) {
-    const remaining = (await loadQueue()).length;
-    return { attempted: 0, delivered: 0, conflicts: 0, remaining };
-  }
-  flushing = true;
-  try {
-    const pairing = await loadPairing();
-    const registered = await loadRegisteredToken();
-    if (!pairing || !registered) {
-      const remaining = (await loadQueue()).length;
-      return { attempted: 0, delivered: 0, conflicts: 0, remaining };
-    }
-
-    let queue = await loadQueue();
-    let attempted = 0;
-    let delivered = 0;
-    let conflicts = 0;
-    while (queue.length > 0) {
-      const entry = queue[0]!;
-      attempted += 1;
-      let response: Response;
-      try {
-        response = await postResponse(pairing, entry);
-      } catch {
-        // Network failure — leave entry at the head, stop flushing.
-        break;
-      }
-      if (response.status === 200 || response.status === 201) {
-        queue = queue.slice(1);
-        await saveQueue(queue);
-        delivered += 1;
-        continue;
-      }
-      if (response.status === 409) {
-        const serverResponse = await readConflictResponse(response);
-        if (serverResponse !== null && serverResponse !== entry.response) {
-          emitConflict({
-            notification_id: entry.notification_id,
-            attempted_response: entry.response,
-            server_response: serverResponse,
-          });
-        }
-        queue = queue.slice(1);
-        await saveQueue(queue);
-        conflicts += 1;
-        continue;
-      }
-      // Any other failure (5xx, etc.) — leave entry, stop.
-      break;
-    }
-    return { attempted, delivered, conflicts, remaining: queue.length };
-  } finally {
-    flushing = false;
-  }
-}
-
-async function readConflictResponse(response: Response): Promise<string | null> {
+async function readConflictResponse(
+  response: Response,
+): Promise<string | null> {
   try {
     const body = (await response.clone().json()) as unknown;
     if (
@@ -200,13 +262,79 @@ async function readConflictResponse(response: Response): Promise<string | null> 
   }
 }
 
+const notificationQueue = createWriteQueue<WriteQueueEntry>(WRITE_QUEUE_KEY, {
+  shouldFlush: async () => {
+    const [pairing, registered] = await Promise.all([
+      loadPairing(),
+      loadRegisteredToken(),
+    ]);
+    return pairing !== null && registered !== null;
+  },
+  beforeFlush: () => {
+    pendingConflicts = 0;
+  },
+  flushOne: async (entry) => {
+    // shouldFlush already gated on pairing presence; reload here to re-resolve
+    // on the off-chance it cleared mid-flush.
+    const pairing = await loadPairing();
+    if (!pairing) return { kind: 'stop' };
+    let response: Response;
+    try {
+      response = await postResponse(pairing, entry);
+    } catch {
+      return { kind: 'stop' };
+    }
+    if (response.status === 200 || response.status === 201) {
+      return { kind: 'remove' };
+    }
+    if (response.status === 409) {
+      const serverResponse = await readConflictResponse(response);
+      if (serverResponse !== null && serverResponse !== entry.response) {
+        emitConflict({
+          notification_id: entry.notification_id,
+          attempted_response: entry.response,
+          server_response: serverResponse,
+        });
+      }
+      pendingConflicts += 1;
+      return { kind: 'discard' };
+    }
+    return { kind: 'stop' };
+  },
+});
+
+export async function enqueueResponse(entry: WriteQueueEntry): Promise<void> {
+  await notificationQueue.enqueue(entry);
+}
+
+/**
+ * Drain the [2C-07] notification-response queue. Concurrent calls coalesce.
+ */
+export async function flushWriteQueue(): Promise<FlushSummary> {
+  const { coalesced, ...rest } = await notificationQueue.flush();
+  // Coalesced calls did no work — pendingConflicts belongs to the in-flight
+  // flush, not this caller. Report 0 to keep the summary self-consistent
+  // (`attempted === 0`, `delivered === 0`, `conflicts === 0`).
+  const conflicts = coalesced ? 0 : pendingConflicts;
+  return { ...rest, conflicts };
+}
+
+// ---------------------------------------------------------------------------
+// Trigger wiring
+// ---------------------------------------------------------------------------
+
 let initialised = false;
 
 /**
- * Wire flush triggers: app foreground, browser `online`, native bridge event,
- * and device-registration completion. Idempotent — repeat calls no-op until
- * the returned cleanup runs. Returns a tear-down used by tests; production
- * code mounts this once for the lifetime of the app.
+ * Wire flush triggers for the [2C-07] notification-response queue: app
+ * foreground, browser `online`, native bridge event, and device-registration
+ * completion. Idempotent — repeat calls no-op until the returned cleanup
+ * runs. Production code mounts this once for the lifetime of the app.
+ *
+ * Habit and routine completion queues mount their own listeners via
+ * `initCompletionQueues` in `./completionQueues` — the two are independent
+ * because the FCM-token gate and the bridge event are notification-specific
+ * concerns that should not extend their reach into completion writes.
  */
 export function initWriteQueue(): () => void {
   if (initialised) return () => undefined;
@@ -264,6 +392,6 @@ export function initWriteQueue(): () => void {
 
 export function __resetForTests(): void {
   conflictListeners.clear();
-  flushing = false;
+  pendingConflicts = 0;
   initialised = false;
 }
