@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route } from 'react-router-dom';
@@ -94,14 +94,30 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-const { enqueueSpy, flushSpy } = vi.hoisted(() => ({
-  enqueueSpy: vi.fn(),
-  flushSpy: vi.fn(),
-}));
+const {
+  enqueueSpy,
+  flushSpy,
+  subscribeHabitWarningSpy,
+  latestHabitWarningListener,
+} = vi.hoisted(() => {
+  const ref: { current: ((w: unknown) => void) | null } = { current: null };
+  return {
+    enqueueSpy: vi.fn(),
+    flushSpy: vi.fn(),
+    subscribeHabitWarningSpy: vi.fn((listener: (w: unknown) => void) => {
+      ref.current = listener;
+      return () => {
+        ref.current = null;
+      };
+    }),
+    latestHabitWarningListener: ref,
+  };
+});
 
 vi.mock('../lib/completionQueues', () => ({
   enqueueHabitCompletion: enqueueSpy,
   flushAllQueues: flushSpy,
+  subscribeHabitCompletionWarnings: subscribeHabitWarningSpy,
 }));
 
 vi.mock('../lib/local-date', async () => {
@@ -168,6 +184,8 @@ beforeEach(() => {
   replaceSpy.mockReset();
   enqueueSpy.mockReset().mockResolvedValue(undefined);
   flushSpy.mockReset().mockResolvedValue(successFlush);
+  subscribeHabitWarningSpy.mockClear();
+  latestHabitWarningListener.current = null;
 
   vi.mocked(Preferences.get).mockReset();
   vi.mocked(Preferences.set).mockReset();
@@ -739,6 +757,69 @@ describe('HabitDetailPage — re-scaffold', () => {
     await waitFor(() => {
       expect(replaceSpy).toHaveBeenCalledWith('/habits');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Warning surface (Group 3 close-ledger carry-forward — see [2C-25] PR body)
+// ---------------------------------------------------------------------------
+
+describe('HabitDetailPage — warning surface', () => {
+  it('subscribes on mount and surfaces a danger toast when paused fires for this habit', async () => {
+    pair();
+    stubFetch();
+
+    renderPage();
+
+    await screen.findByTestId('habit-mark-complete-button');
+    expect(subscribeHabitWarningSpy).toHaveBeenCalled();
+    expect(latestHabitWarningListener.current).not.toBeNull();
+
+    await act(async () => {
+      latestHabitWarningListener.current?.({
+        kind: 'paused',
+        habit_id: HABIT_ID,
+      });
+    });
+
+    const toast = await screen.findByTestId('toast');
+    expect(toast).toHaveTextContent(/habit is paused/i);
+    expect(toast).toHaveAttribute('data-color', 'danger');
+  });
+
+  it('surfaces the not_found warning copy', async () => {
+    pair();
+    stubFetch();
+
+    renderPage();
+
+    await screen.findByTestId('habit-mark-complete-button');
+    await act(async () => {
+      latestHabitWarningListener.current?.({
+        kind: 'not_found',
+        habit_id: HABIT_ID,
+      });
+    });
+
+    const toast = await screen.findByTestId('toast');
+    expect(toast).toHaveTextContent(/habit no longer exists/i);
+  });
+
+  it('ignores warnings for a different habit_id', async () => {
+    pair();
+    stubFetch();
+
+    renderPage();
+
+    await screen.findByTestId('habit-mark-complete-button');
+    await act(async () => {
+      latestHabitWarningListener.current?.({
+        kind: 'paused',
+        habit_id: 'other-habit',
+      });
+    });
+
+    expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
   });
 });
 

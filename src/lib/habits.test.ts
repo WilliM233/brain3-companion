@@ -13,9 +13,13 @@ import {
   HABITS_CACHE_KEY,
   HABITS_PATH,
   fetchActiveHabits,
+  fetchActiveHabitsByRoutine,
+  habitsByRoutineCacheKey,
   partitionAndSortHabits,
   readCachedHabits,
+  readCachedHabitsByRoutine,
   writeCachedHabits,
+  writeCachedHabitsByRoutine,
   type HabitResponse,
 } from './habits';
 
@@ -173,6 +177,77 @@ describe('readCachedHabits / writeCachedHabits', () => {
   it('returns null when cache is missing required keys', async () => {
     prefsStore.set(HABITS_CACHE_KEY, JSON.stringify({ items: [] }));
     expect(await readCachedHabits()).toBeNull();
+  });
+});
+
+describe('fetchActiveHabitsByRoutine', () => {
+  it('GETs /api/habits/?routine_id={id}&status=active with bearer auth', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ items: [], count: 0 }), { status: 200 }),
+    );
+
+    const result = await fetchActiveHabitsByRoutine(PAIRING, 'r-1');
+
+    expect(result).toEqual({ ok: true, items: [] });
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(url as string).toBe(
+      `${PAIRING.url}${HABITS_PATH}?routine_id=r-1&status=active`,
+    );
+    const headers = init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${PAIRING.token}`);
+    expect(init?.method).toBe('GET');
+  });
+
+  it('returns the items list from the envelope', async () => {
+    const habit = makeHabit({ id: 'h-9', routine_id: 'r-1' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ items: [habit], count: 1 }), { status: 200 }),
+    );
+    const result = await fetchActiveHabitsByRoutine(PAIRING, 'r-1');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.id).toBe('h-9');
+    }
+  });
+
+  it('encodes the routine_id query parameter', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ items: [], count: 0 }), { status: 200 }),
+    );
+    await fetchActiveHabitsByRoutine(PAIRING, 'r with spaces');
+    const [url] = fetchSpy.mock.calls[0]!;
+    expect(url as string).toContain('routine_id=r%20with%20spaces');
+  });
+
+  it('returns network on fetch rejection', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('boom'));
+    const result = await fetchActiveHabitsByRoutine(PAIRING, 'r-1');
+    expect(result).toEqual({ ok: false, reason: 'network' });
+  });
+});
+
+describe('readCachedHabitsByRoutine / writeCachedHabitsByRoutine', () => {
+  it('round-trips items + fetched_at under the per-routine cache key', async () => {
+    const habit = makeHabit({ id: 'h-1', routine_id: 'r-1' });
+    const now = new Date('2026-05-02T12:00:00Z');
+
+    await writeCachedHabitsByRoutine('r-1', [habit], now);
+    const cached = await readCachedHabitsByRoutine('r-1');
+
+    expect(cached).not.toBeNull();
+    expect(cached?.fetched_at).toBe(now.toISOString());
+    expect(cached?.items).toEqual([habit]);
+    expect(prefsStore.has(habitsByRoutineCacheKey('r-1'))).toBe(true);
+  });
+
+  it('returns null when no cache exists', async () => {
+    expect(await readCachedHabitsByRoutine('r-missing')).toBeNull();
+  });
+
+  it('returns null on malformed cache JSON', async () => {
+    prefsStore.set(habitsByRoutineCacheKey('r-bad'), '{ not json');
+    expect(await readCachedHabitsByRoutine('r-bad')).toBeNull();
   });
 });
 

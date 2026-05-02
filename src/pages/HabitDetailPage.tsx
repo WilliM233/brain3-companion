@@ -49,6 +49,8 @@ import {
 import {
   enqueueHabitCompletion,
   flushAllQueues,
+  subscribeHabitCompletionWarnings,
+  type HabitCompletionWarning,
 } from '../lib/completionQueues';
 import { todayLocalDate } from '../lib/local-date';
 
@@ -255,6 +257,23 @@ const DetailBody: React.FC<BodyProps> = ({
     habitQuery.isError &&
     !isNotFoundError(habitQuery.error) &&
     habit !== undefined;
+
+  // Wire the [2C-23] habit-completion warning subscription. Per the Group 3
+  // close ledger this surface lands in [2C-25] alongside the routine warning
+  // surface in RoutineDetailPage — see PR body Deviation §1 + §2.
+  useEffect(() => {
+    const unsubscribe = subscribeHabitCompletionWarnings(
+      (warning: HabitCompletionWarning) => {
+        if (warning.habit_id !== habitId) return;
+        const message =
+          warning.kind === 'paused'
+            ? 'Habit is paused — completion was discarded'
+            : 'Habit no longer exists — completion was discarded';
+        setToast({ open: true, message, color: 'danger' });
+      },
+    );
+    return () => unsubscribe();
+  }, [habitId]);
 
   const handleRefresh = useCallback(
     async (event: CustomEvent<RefresherEventDetail>): Promise<void> => {
@@ -554,7 +573,7 @@ const DetailBody: React.FC<BodyProps> = ({
         isOpen={toast.open}
         message={toast.message}
         color={toast.color}
-        duration={3000}
+        duration={toast.color === 'danger' ? 5000 : 3000}
         onDidDismiss={() => setToast({ open: false, message: '' })}
       />
     </>
