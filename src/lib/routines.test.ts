@@ -10,10 +10,16 @@ import {
   ROUTINES_PATH,
   fetchActiveRoutines,
   fetchRoutine,
+  fetchRoutineDetail,
+  readCachedRoutineDetail,
   readCachedRoutines,
+  routineDetailCacheKey,
   sortRoutinesByTitle,
+  writeCachedRoutineDetail,
   writeCachedRoutines,
+  type RoutineDetailResponse,
   type RoutineResponse,
+  type RoutineScheduleResponse,
 } from './routines';
 
 const PAIRING = {
@@ -168,6 +174,99 @@ describe('readCachedRoutines / writeCachedRoutines', () => {
     prefsStore.set(ROUTINES_CACHE_KEY, JSON.stringify({ items: [] }));
     const read = await readCachedRoutines();
     expect(read).toBeNull();
+  });
+});
+
+describe('fetchRoutineDetail', () => {
+  it('GETs /api/routines/{id} and parses RoutineDetailResponse with schedules', async () => {
+    const schedule: RoutineScheduleResponse = {
+      id: 's-1',
+      routine_id: 'r-1',
+      day_of_week: 'weekdays',
+      time_of_day: '07:00',
+      preferred_window: null,
+    };
+    const detail: RoutineDetailResponse = {
+      id: 'r-1',
+      title: 'Morning kit',
+      schedules: [schedule],
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(detail), { status: 200 }),
+    );
+
+    const result = await fetchRoutineDetail(PAIRING, 'r-1');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.routine.title).toBe('Morning kit');
+      expect(result.routine.schedules).toEqual([schedule]);
+    }
+    const [url] = fetchSpy.mock.calls[0]!;
+    expect(url as string).toBe(`${PAIRING.url}${ROUTINES_PATH}r-1`);
+  });
+
+  it('defaults schedules to [] when the server omits the field', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ id: 'r-1', title: 'Bare' }), { status: 200 }),
+    );
+    const result = await fetchRoutineDetail(PAIRING, 'r-1');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.routine.schedules).toEqual([]);
+    }
+  });
+
+  it('returns not_found on 404', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('', { status: 404 }),
+    );
+    const result = await fetchRoutineDetail(PAIRING, 'missing');
+    expect(result).toEqual({
+      ok: false,
+      reason: 'not_found',
+      statusCode: 404,
+    });
+  });
+
+  it('returns network on fetch rejection', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('disconnected'));
+    const result = await fetchRoutineDetail(PAIRING, 'r-1');
+    expect(result).toEqual({ ok: false, reason: 'network' });
+  });
+});
+
+describe('readCachedRoutineDetail / writeCachedRoutineDetail', () => {
+  it('round-trips a routine + fetched_at under the per-routine cache key', async () => {
+    const detail: RoutineDetailResponse = {
+      id: 'r-9',
+      title: 'Wind-down',
+      schedules: [],
+    };
+    const now = new Date('2026-05-02T11:00:00Z');
+
+    await writeCachedRoutineDetail('r-9', detail, now);
+    const read = await readCachedRoutineDetail('r-9');
+
+    expect(read).toEqual({ fetched_at: now.toISOString(), routine: detail });
+    expect(prefsStore.get(routineDetailCacheKey('r-9'))).toBeDefined();
+  });
+
+  it('returns null when the cache is empty', async () => {
+    expect(await readCachedRoutineDetail('r-missing')).toBeNull();
+  });
+
+  it('returns null when the cache is malformed', async () => {
+    prefsStore.set(routineDetailCacheKey('r-bad'), '{ not json');
+    expect(await readCachedRoutineDetail('r-bad')).toBeNull();
+  });
+
+  it('returns null when the cache is missing required fields', async () => {
+    prefsStore.set(
+      routineDetailCacheKey('r-bad2'),
+      JSON.stringify({ routine: { id: 'r' } }),
+    );
+    expect(await readCachedRoutineDetail('r-bad2')).toBeNull();
   });
 });
 

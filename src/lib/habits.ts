@@ -17,6 +17,8 @@ import type { Pairing } from './pairing';
 
 export const HABITS_CACHE_KEY = 'brain.cache.habits.active';
 export const HABITS_PATH = '/api/habits/';
+export const habitsByRoutineCacheKey = (routineId: string): string =>
+  `brain.cache.habits.byRoutine.${routineId}`;
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -115,6 +117,51 @@ export async function fetchActiveHabits(
   }
 }
 
+/**
+ * Fetch the active habits that belong to a specific routine. The brain3
+ * habits router treats `routine_id` as a query filter, so this is the same
+ * list endpoint as `fetchActiveHabits` with one extra constraint.
+ */
+export async function fetchActiveHabitsByRoutine(
+  pairing: Pairing,
+  routineId: string,
+): Promise<FetchHabitsResult> {
+  const base = pairing.url.replace(/\/$/, '');
+  const url = `${base}${HABITS_PATH}?routine_id=${encodeURIComponent(routineId)}&status=active`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${pairing.token}` },
+      signal: controller.signal,
+    });
+    if (response.status === 200) {
+      const body = (await response.json()) as unknown;
+      const items =
+        body &&
+        typeof body === 'object' &&
+        'items' in body &&
+        Array.isArray((body as HabitListResponseBody).items)
+          ? (body as HabitListResponseBody).items
+          : [];
+      return { ok: true, items };
+    }
+    if (response.status === 401) {
+      return { ok: false, reason: 'unauthorized', statusCode: 401 };
+    }
+    return { ok: false, reason: 'server', statusCode: response.status };
+  } catch {
+    if (controller.signal.aborted) {
+      return { ok: false, reason: 'timeout' };
+    }
+    return { ok: false, reason: 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface CachedHabits {
   fetched_at: string;
   items: HabitResponse[];
@@ -151,6 +198,56 @@ export async function writeCachedHabits(
   };
   await Preferences.set({
     key: HABITS_CACHE_KEY,
+    value: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Per-routine habits cache used by [2C-25] RoutineDetailPage. Mirrors the
+ * `readCachedHabits` shape but partitioned by `routineId` so each routine's
+ * checklist hydrates from its own slot.
+ */
+export interface CachedHabitsByRoutine {
+  fetched_at: string;
+  items: HabitResponse[];
+}
+
+export async function readCachedHabitsByRoutine(
+  routineId: string,
+): Promise<CachedHabitsByRoutine | null> {
+  const { value } = await Preferences.get({
+    key: habitsByRoutineCacheKey(routineId),
+  });
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'items' in parsed &&
+      'fetched_at' in parsed &&
+      Array.isArray((parsed as CachedHabitsByRoutine).items) &&
+      typeof (parsed as CachedHabitsByRoutine).fetched_at === 'string'
+    ) {
+      return parsed as CachedHabitsByRoutine;
+    }
+  } catch {
+    // Treat malformed cache as empty.
+  }
+  return null;
+}
+
+export async function writeCachedHabitsByRoutine(
+  routineId: string,
+  items: HabitResponse[],
+  now: Date = new Date(),
+): Promise<void> {
+  const payload: CachedHabitsByRoutine = {
+    fetched_at: now.toISOString(),
+    items,
+  };
+  await Preferences.set({
+    key: habitsByRoutineCacheKey(routineId),
     value: JSON.stringify(payload),
   });
 }
