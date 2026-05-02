@@ -5,6 +5,7 @@ import { IonReactRouter } from '@ionic/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SettingsPage from './pages/SettingsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import HabitsPage from './pages/HabitsPage';
 import { loadPairing, subscribePairing } from './lib/pairing';
 import {
   clearDeviceRegistration,
@@ -101,6 +102,9 @@ const App: React.FC = () => (
           </Route>
           <Route exact path="/notifications">
             <NotificationsPage />
+          </Route>
+          <Route exact path="/habits">
+            <HabitsPage />
           </Route>
           <Route exact path="/">
             <RootRedirect />
