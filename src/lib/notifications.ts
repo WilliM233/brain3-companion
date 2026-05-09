@@ -31,15 +31,25 @@ export type NotificationStatus =
 export interface NotificationItem {
   id: string;
   notification_type: string;
+  delivery_type: string;
   message: string;
   /** ISO timestamp of when the nudge was scheduled to fire. */
   scheduled_at: string;
   /** Device-local calendar date the nudge belongs to (`YYYY-MM-DD`). */
   scheduled_date: string;
   status: NotificationStatus;
-  expires_at: string;
+  expires_at: string | null;
   /** The chosen canned response, or `null` if not responded. */
   response: string | null;
+  response_note: string | null;
+  responded_at: string | null;
+  canned_responses: string[] | null;
+  target_entity_type: string;
+  target_entity_id: string;
+  scheduled_by: string;
+  rule_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface NotificationListResponseBody {
@@ -52,6 +62,14 @@ export type FetchResult =
   | {
       ok: false;
       reason: 'unauthorized' | 'network' | 'server' | 'timeout';
+      statusCode?: number;
+    };
+
+export type FetchNotificationResult =
+  | { ok: true; notification: NotificationItem }
+  | {
+      ok: false;
+      reason: 'unauthorized' | 'network' | 'server' | 'timeout' | 'not_found';
       statusCode?: number;
     };
 
@@ -84,6 +102,42 @@ export async function fetchNotifications(
     }
     if (response.status === 401) {
       return { ok: false, reason: 'unauthorized', statusCode: 401 };
+    }
+    return { ok: false, reason: 'server', statusCode: response.status };
+  } catch {
+    if (controller.signal.aborted) {
+      return { ok: false, reason: 'timeout' };
+    }
+    return { ok: false, reason: 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function fetchNotification(
+  pairing: Pairing,
+  notificationId: string,
+): Promise<FetchNotificationResult> {
+  const base = pairing.url.replace(/\/$/, '');
+  const url = `${base}${NOTIFICATIONS_PATH}${notificationId}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${pairing.token}` },
+      signal: controller.signal,
+    });
+    if (response.status === 200) {
+      const body = (await response.json()) as NotificationItem;
+      return { ok: true, notification: body };
+    }
+    if (response.status === 401) {
+      return { ok: false, reason: 'unauthorized', statusCode: 401 };
+    }
+    if (response.status === 404) {
+      return { ok: false, reason: 'not_found', statusCode: 404 };
     }
     return { ok: false, reason: 'server', statusCode: response.status };
   } catch {

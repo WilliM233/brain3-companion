@@ -5,6 +5,7 @@ import { IonReactRouter } from '@ionic/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SettingsPage from './pages/SettingsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import NotificationDetailPage from './pages/NotificationDetailPage';
 import HabitsPage from './pages/HabitsPage';
 import HabitDetailPage from './pages/HabitDetailPage';
 import RoutinesPage from './pages/RoutinesPage';
@@ -109,6 +110,9 @@ const App: React.FC = () => (
           </Route>
           <Route exact path="/notifications">
             <NotificationsPage />
+          </Route>
+          <Route exact path="/notifications/:notificationId">
+            <NotificationDetailPage />
           </Route>
           <Route exact path="/habits">
             <HabitsPage />
