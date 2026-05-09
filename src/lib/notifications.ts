@@ -42,6 +42,11 @@ export interface NotificationItem {
   response: string | null;
 }
 
+interface NotificationListResponseBody {
+  items: NotificationItem[];
+  count: number;
+}
+
 export type FetchResult =
   | { ok: true; items: NotificationItem[] }
   | {
@@ -68,7 +73,13 @@ export async function fetchNotifications(
     });
     if (response.status === 200) {
       const body = (await response.json()) as unknown;
-      const items = Array.isArray(body) ? (body as NotificationItem[]) : [];
+      const items =
+        body &&
+        typeof body === 'object' &&
+        'items' in body &&
+        Array.isArray((body as NotificationListResponseBody).items)
+          ? (body as NotificationListResponseBody).items
+          : [];
       return { ok: true, items };
     }
     if (response.status === 401) {
