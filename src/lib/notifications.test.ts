@@ -63,7 +63,9 @@ describe('fetchNotifications — server contract', () => {
   it('GETs /api/notifications/ with bearer auth and a scheduled_after window', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response('[]', { status: 200 }));
+      .mockResolvedValue(
+        new Response(JSON.stringify({ items: [], count: 0 }), { status: 200 }),
+      );
 
     const now = new Date(2026, 3, 28, 14, 0); // 2026-04-28 14:00 local
     const result = await fetchNotifications(PAIRING, now);
@@ -82,7 +84,9 @@ describe('fetchNotifications — server contract', () => {
   it('strips a trailing slash from pairing.url', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response('[]', { status: 200 }));
+      .mockResolvedValue(
+        new Response(JSON.stringify({ items: [], count: 0 }), { status: 200 }),
+      );
 
     await fetchNotifications(
       { url: 'https://brain.local:8000/', token: 'tok' },
@@ -94,10 +98,10 @@ describe('fetchNotifications — server contract', () => {
     expect((url as string).startsWith('https://brain.local:8000//api/notifications/')).toBe(false);
   });
 
-  it('returns the parsed array on 200', async () => {
+  it('unwraps {items, count} envelope from /api/notifications/ on 200', async () => {
     const items = [makeItem({ id: 'a' }), makeItem({ id: 'b' })];
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(items), { status: 200 }),
+      new Response(JSON.stringify({ items, count: 2 }), { status: 200 }),
     );
 
     const result = await fetchNotifications(PAIRING);
@@ -108,9 +112,9 @@ describe('fetchNotifications — server contract', () => {
     }
   });
 
-  it('falls back to an empty array if the body is not an array', async () => {
+  it('returns empty list when the server returns a non-envelope shape', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ items: [] }), { status: 200 }),
+      new Response('null', { status: 200 }),
     );
 
     const result = await fetchNotifications(PAIRING);
