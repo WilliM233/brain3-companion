@@ -79,3 +79,6 @@ xcuserdata/
 *.log
 coverage/
 .nyc_output/
+
+# Developer onboarding — stored in BRAIN, not in repo
+CLAUDE.md
