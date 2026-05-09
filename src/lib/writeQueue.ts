@@ -23,6 +23,8 @@
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { composeCheckinFromCanned } from './checkin-parser';
+import type { CheckinType } from './checkins';
 import {
   loadRegisteredToken,
   subscribeRegistration,
@@ -179,11 +181,40 @@ export function createWriteQueue<T>(
 // [2C-07] canned-response queue — concrete instance of the factory
 // ---------------------------------------------------------------------------
 
+/**
+ * CheckinCreate-shaped payload [2C-19] enqueues alongside a `/respond` write
+ * for `checkin_prompt` notifications. Mirrors `app/schemas/checkins.py`
+ * `CheckinCreate` on the brain3 server (`checkin_type` mandatory; numeric
+ * fields 1–5 or null; `freeform_note` ≤ 5000 chars).
+ */
+export interface CheckinPayload {
+  checkin_type: CheckinType;
+  energy_level: number | null;
+  mood: number | null;
+  focus_level: number | null;
+  freeform_note: string | null;
+}
+
 export interface WriteQueueEntry {
   notification_id: string;
   response: string;
   response_note: string | null;
   enqueued_at: string;
+  /**
+   * Notification type from the FCM payload. Populated by the native
+   * `CannedResponseReceiver` (and JS [2C-19] enqueues) so the flush handler
+   * can detect `checkin_prompt` and post the additional `/api/checkins/`.
+   * Optional for backward compatibility with pre-[2C-19] entries.
+   */
+  notification_type?: string | null;
+  /**
+   * Pre-composed CheckinCreate payload for the [2C-19] freetext "Add note"
+   * path. When present, the flush handler posts it to `/api/checkins/` after
+   * `/respond` returns 2xx. When absent on a `checkin_prompt` entry, the
+   * flush handler derives a numeric-only payload from `response` via
+   * `parseCannedResponse`.
+   */
+  checkin_payload?: CheckinPayload | null;
 }
 
 export interface ConflictWarning {
@@ -243,6 +274,38 @@ async function postResponse(
   );
 }
 
+async function postCheckin(
+  pairing: Pairing,
+  payload: CheckinPayload,
+): Promise<Response> {
+  const base = pairing.url.replace(/\/$/, '');
+  return await fetch(`${base}/api/checkins/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${pairing.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Per [2C-19] Escalation 2 Option A, `checkin_prompt` notifications create a
+ * check-in alongside the `/respond` write. The payload is either pre-composed
+ * by the JS Add-note path (`entry.checkin_payload`) or derived from the
+ * canned response on flush (canned-only path). Returns `null` when no
+ * check-in should fire — non-`checkin_prompt` entries, or pre-[2C-19] entries
+ * that lack the type hint.
+ */
+function resolveCheckinPayload(entry: WriteQueueEntry): CheckinPayload | null {
+  if (entry.checkin_payload) return entry.checkin_payload;
+  if (entry.notification_type !== 'checkin_prompt') return null;
+  return composeCheckinFromCanned({
+    cannedResponse: entry.response,
+    freeformNote: entry.response_note,
+  });
+}
+
 async function readConflictResponse(
   response: Response,
 ): Promise<string | null> {
@@ -284,7 +347,37 @@ const notificationQueue = createWriteQueue<WriteQueueEntry>(WRITE_QUEUE_KEY, {
     } catch {
       return { kind: 'stop' };
     }
-    if (response.status === 200 || response.status === 201) {
+    const respondDelivered =
+      response.status === 200 || response.status === 201;
+    if (respondDelivered) {
+      // [2C-19] Escalation 2 Option A: `checkin_prompt` entries fire a
+      // companion `/api/checkins/` POST after `/respond` succeeds. Treat any
+      // network or 5xx failure on the check-in POST as a halt — the entry
+      // stays at the head so the next flush retries. Server-side `/respond`
+      // is idempotent per [2C-03], so the retry re-sends `/respond` safely.
+      // Terminal 4xx on the check-in POST drops to a discard so the queue
+      // doesn't stall on a permanently-bad payload.
+      const checkinPayload = resolveCheckinPayload(entry);
+      if (checkinPayload !== null) {
+        let checkinResponse: Response;
+        try {
+          checkinResponse = await postCheckin(pairing, checkinPayload);
+        } catch {
+          return { kind: 'stop' };
+        }
+        if (
+          checkinResponse.status !== 200 &&
+          checkinResponse.status !== 201
+        ) {
+          if (checkinResponse.status >= 400 && checkinResponse.status < 500) {
+            console.warn(
+              `[writeQueue] check-in POST rejected (${checkinResponse.status}) for notification ${entry.notification_id}; dropping entry`,
+            );
+            return { kind: 'discard' };
+          }
+          return { kind: 'stop' };
+        }
+      }
       return { kind: 'remove' };
     }
     if (response.status === 409) {

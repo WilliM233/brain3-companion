@@ -29,6 +29,7 @@ object WriteQueueStore {
         response: String,
         responseNote: String?,
         enqueuedAt: String,
+        notificationType: String? = null,
     ) {
         val prefs = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -43,11 +44,18 @@ object WriteQueueStore {
                 JSONArray()
             }
         }
+        // [2C-19] adds optional `notification_type` so the JS flush handler
+        // can detect `checkin_prompt` and post the additional /api/checkins/.
+        // Older entries without the field continue to flow through /respond
+        // only — backward-compatible.
         val entry = JSONObject().apply {
             put("notification_id", notificationId)
             put("response", response)
             put("response_note", responseNote ?: JSONObject.NULL)
             put("enqueued_at", enqueuedAt)
+            if (notificationType != null) {
+                put("notification_type", notificationType)
+            }
         }
         array.put(entry)
         if (array.length() > SOFT_CAP) {

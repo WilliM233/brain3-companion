@@ -319,6 +319,219 @@ describe('flushWriteQueue — failure handling', () => {
   });
 });
 
+describe('flushWriteQueue — [2C-19] checkin_prompt extension', () => {
+  beforeEach(() => {
+    seedPairing();
+    seedRegistered();
+  });
+
+  it('posts /api/checkins/ after /respond for checkin_prompt with a pre-composed payload', async () => {
+    prefsStore.set(
+      WRITE_QUEUE_KEY,
+      JSON.stringify([
+        entry({
+          notification_id: 'add-note',
+          response: 'Energy 4',
+          response_note: 'Focused but tired.',
+          notification_type: 'checkin_prompt',
+          checkin_payload: {
+            checkin_type: 'freeform',
+            energy_level: 4,
+            mood: null,
+            focus_level: null,
+            freeform_note: 'Focused but tired.',
+          },
+        }),
+      ]),
+    );
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 201 }));
+
+    const summary = await flushWriteQueue();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain(
+      '/api/notifications/add-note/respond',
+    );
+    expect(String(fetchSpy.mock.calls[1]![0])).toBe(
+      `${PAIRING_URL}/api/checkins/`,
+    );
+    const checkinInit = fetchSpy.mock.calls[1]![1]!;
+    expect(checkinInit.method).toBe('POST');
+    expect(JSON.parse(checkinInit.body as string)).toEqual({
+      checkin_type: 'freeform',
+      energy_level: 4,
+      mood: null,
+      focus_level: null,
+      freeform_note: 'Focused but tired.',
+    });
+    expect(summary).toEqual({
+      attempted: 1,
+      delivered: 1,
+      conflicts: 0,
+      remaining: 0,
+    });
+  });
+
+  it('derives a numeric-only check-in payload on flush for canned-only checkin_prompt entries', async () => {
+    prefsStore.set(
+      WRITE_QUEUE_KEY,
+      JSON.stringify([
+        entry({
+          notification_id: 'canned-only',
+          response: 'Energy 5',
+          response_note: null,
+          notification_type: 'checkin_prompt',
+        }),
+      ]),
+    );
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 201 }));
+
+    await flushWriteQueue();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const checkinInit = fetchSpy.mock.calls[1]![1]!;
+    expect(JSON.parse(checkinInit.body as string)).toEqual({
+      checkin_type: 'freeform',
+      energy_level: 5,
+      mood: null,
+      focus_level: null,
+      freeform_note: null,
+    });
+  });
+
+  it('posts a note-only check-in when the canned response is the server default plain "3"', async () => {
+    prefsStore.set(
+      WRITE_QUEUE_KEY,
+      JSON.stringify([
+        entry({
+          notification_id: 'plain-three',
+          response: '3',
+          response_note: null,
+          notification_type: 'checkin_prompt',
+        }),
+      ]),
+    );
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 201 }));
+
+    await flushWriteQueue();
+
+    const checkinInit = fetchSpy.mock.calls[1]![1]!;
+    expect(JSON.parse(checkinInit.body as string)).toEqual({
+      checkin_type: 'freeform',
+      energy_level: null,
+      mood: null,
+      focus_level: null,
+      freeform_note: null,
+    });
+  });
+
+  it('does not post /api/checkins/ for non-checkin_prompt entries', async () => {
+    prefsStore.set(
+      WRITE_QUEUE_KEY,
+      JSON.stringify([
+        entry({
+          notification_id: 'habit-1',
+          response: 'Already done',
+          notification_type: 'habit_nudge',
+        }),
+      ]),
+    );
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 201 }));
+
+    await flushWriteQueue();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain(
+      '/api/notifications/habit-1/respond',
+    );
+  });
+
+  it('preserves backward compatibility for entries without a notification_type', async () => {
+    prefsStore.set(
+      WRITE_QUEUE_KEY,
+      JSON.stringify([
+        entry({ notification_id: 'legacy', response: 'Already done' }),
+      ]),
+    );
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 201 }));
+
+    const summary = await flushWriteQueue();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(summary.delivered).toBe(1);
+  });
+
+  it('halts on a check-in POST network error so the entry retries on next flush', async () => {
+    prefsStore.set(
+      WRITE_QUEUE_KEY,
+      JSON.stringify([
+        entry({
+          notification_id: 'retry-me',
+          response: 'Energy 4',
+          notification_type: 'checkin_prompt',
+        }),
+      ]),
+    );
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 201 })) // /respond
+      .mockRejectedValueOnce(new Error('checkins network down')); // /api/checkins/
+
+    const summary = await flushWriteQueue();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(summary.delivered).toBe(0);
+    expect(summary.remaining).toBe(1);
+    const queue = await readQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0]?.notification_id).toBe('retry-me');
+  });
+
+  it('discards the entry when /api/checkins/ returns a terminal 4xx', async () => {
+    prefsStore.set(
+      WRITE_QUEUE_KEY,
+      JSON.stringify([
+        entry({
+          notification_id: 'bad-payload',
+          response: 'Energy 4',
+          notification_type: 'checkin_prompt',
+        }),
+      ]),
+    );
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 201 }))
+      .mockResolvedValueOnce(new Response('bad request', { status: 400 }));
+
+    const summary = await flushWriteQueue();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(summary.delivered).toBe(0);
+    expect(summary.remaining).toBe(0);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('flushWriteQueue — 409 conflict', () => {
   beforeEach(() => {
     seedPairing();

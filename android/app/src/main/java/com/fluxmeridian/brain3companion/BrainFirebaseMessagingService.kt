@@ -36,14 +36,26 @@ class BrainFirebaseMessagingService : MessagingService() {
             .extend(NotificationCompat.WearableExtender())
 
         payload.cannedResponses.forEach { response ->
-            builder.addAction(buildAction(payload, response))
+            builder.addAction(buildCannedAction(payload, response))
+        }
+
+        // [2C-19] Amendment to [2C-06]: `checkin_prompt` notifications gain
+        // an "Add note" action button alongside the canned responses. Tapping
+        // it opens MainActivity with a different action than canned taps —
+        // the JS layer routes to `/checkins/notes/:id?canned=…` and the user
+        // composes a freeform note. See PR for the spec amendment block.
+        if (payload.notificationType == NOTIFICATION_TYPE_CHECKIN_PROMPT) {
+            builder.addAction(buildAddNoteAction(payload, cannedContext = null))
         }
 
         NotificationManagerCompat.from(this)
             .notify(payload.notificationId.hashCode(), builder.build())
     }
 
-    private fun buildAction(payload: PushPayload, response: String): NotificationCompat.Action {
+    private fun buildCannedAction(
+        payload: PushPayload,
+        response: String,
+    ): NotificationCompat.Action {
         val intent = Intent(this, CannedResponseReceiver::class.java).apply {
             action = CannedResponseReceiver.ACTION_RESPOND
             putExtra(CannedResponseReceiver.EXTRA_NOTIFICATION_ID, payload.notificationId)
@@ -60,5 +72,32 @@ class BrainFirebaseMessagingService : MessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Action.Builder(0, response, pendingIntent).build()
+    }
+
+    private fun buildAddNoteAction(
+        payload: PushPayload,
+        cannedContext: String?,
+    ): NotificationCompat.Action {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = AddNoteActivityIntents.ACTION_ADD_NOTE
+            putExtra(AddNoteActivityIntents.EXTRA_NOTIFICATION_ID, payload.notificationId)
+            putExtra(AddNoteActivityIntents.EXTRA_CANNED_RESPONSE, cannedContext)
+            // singleTask MainActivity reuses the existing instance; CLEAR_TOP
+            // ensures we deliver onNewIntent rather than stacking duplicates.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val requestCode = (payload.notificationId + "|add_note").hashCode()
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Action.Builder(0, ADD_NOTE_LABEL, pendingIntent).build()
+    }
+
+    companion object {
+        private const val NOTIFICATION_TYPE_CHECKIN_PROMPT = "checkin_prompt"
+        private const val ADD_NOTE_LABEL = "Add note"
     }
 }
