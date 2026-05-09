@@ -12,6 +12,7 @@ import RoutinesPage from './pages/RoutinesPage';
 import RoutineDetailPage from './pages/RoutineDetailPage';
 import CheckinsPage from './pages/CheckinsPage';
 import CheckinDetailPage from './pages/CheckinDetailPage';
+import CheckinNoteEntryPage from './pages/CheckinNoteEntryPage';
 import RulesPage from './pages/RulesPage';
 import RuleDetailPage from './pages/RuleDetailPage';
 import { loadPairing, subscribePairing } from './lib/pairing';
@@ -21,6 +22,13 @@ import {
 } from './lib/device-registration';
 import { initWriteQueue } from './lib/writeQueue';
 import { initCompletionQueues } from './lib/completionQueues';
+import {
+  clearPendingIntent,
+  pendingIntentRoute,
+  readPendingIntent,
+} from './lib/pendingIntent';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -98,12 +106,51 @@ const WriteQueueRunner: React.FC = () => {
   return null;
 };
 
+/**
+ * [2C-19] Bridge for native-side pending intents — the FCM "Add note" tap
+ * on a `checkin_prompt` notification writes a slot via Kotlin
+ * `PendingIntentStore`; this hook drains it on mount and on
+ * `appStateChange.active`, navigates, and clears.
+ */
+const PendingIntentRunner: React.FC = () => {
+  const history = useHistory();
+  useEffect(() => {
+    let cancelled = false;
+    const drain = async (): Promise<void> => {
+      const intent = await readPendingIntent();
+      if (cancelled || intent === null) return;
+      const route = pendingIntentRoute(intent);
+      await clearPendingIntent();
+      history.push(route);
+    };
+    void drain();
+
+    if (!Capacitor.isNativePlatform()) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const handlePromise = CapacitorApp.addListener(
+      'appStateChange',
+      ({ isActive }) => {
+        if (isActive) void drain();
+      },
+    );
+    return () => {
+      cancelled = true;
+      void handlePromise.then((handle) => handle.remove());
+    };
+  }, [history]);
+  return null;
+};
+
 const App: React.FC = () => (
   <QueryClientProvider client={queryClient}>
     <IonApp>
       <DeviceRegistrar />
       <WriteQueueRunner />
       <IonReactRouter>
+        <PendingIntentRunner />
         <IonRouterOutlet>
           <Route exact path="/settings">
             <SettingsPage />
@@ -128,6 +175,13 @@ const App: React.FC = () => (
           </Route>
           <Route exact path="/checkins">
             <CheckinsPage />
+          </Route>
+          {/* [2C-19] Note-entry route — declared before /checkins/:checkinId
+              so the literal "notes" segment matches first under react-router 5
+              non-exact resolution. The `exact` flag also keeps both routes
+              isolated. */}
+          <Route exact path="/checkins/notes/:notificationId">
+            <CheckinNoteEntryPage />
           </Route>
           <Route exact path="/checkins/:checkinId">
             <CheckinDetailPage />

@@ -37,6 +37,10 @@ class CannedResponseReceiver : BroadcastReceiver() {
             response = response,
             responseNote = null,
             enqueuedAt = isoTimestamp(),
+            // [2C-19]: surface the FCM `notification_type` so the JS flush
+            // handler can post the companion `/api/checkins/` for
+            // `checkin_prompt` entries (Escalation 2 Option A).
+            notificationType = notificationType,
         )
 
         NotificationManagerCompat.from(context).cancel(notificationId.hashCode())
