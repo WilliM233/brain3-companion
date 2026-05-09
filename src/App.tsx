@@ -9,6 +9,8 @@ import HabitsPage from './pages/HabitsPage';
 import HabitDetailPage from './pages/HabitDetailPage';
 import RoutinesPage from './pages/RoutinesPage';
 import RoutineDetailPage from './pages/RoutineDetailPage';
+import CheckinsPage from './pages/CheckinsPage';
+import CheckinDetailPage from './pages/CheckinDetailPage';
 import { loadPairing, subscribePairing } from './lib/pairing';
 import {
   clearDeviceRegistration,
@@ -117,6 +119,12 @@ const App: React.FC = () => (
           </Route>
           <Route exact path="/routines/:routineId">
             <RoutineDetailPage />
+          </Route>
+          <Route exact path="/checkins">
+            <CheckinsPage />
+          </Route>
+          <Route exact path="/checkins/:checkinId">
+            <CheckinDetailPage />
           </Route>
           <Route exact path="/">
             <RootRedirect />
