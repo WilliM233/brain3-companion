@@ -10,10 +10,13 @@ import {
   IonPage,
   IonRefresher,
   IonRefresherContent,
+  IonSegment,
+  IonSegmentButton,
   IonText,
   IonTitle,
   IonToolbar,
   type RefresherEventDetail,
+  type SegmentChangeEventDetail,
 } from '@ionic/react';
 import { format, parseISO } from 'date-fns';
 import ConnectionIndicator from '../components/ConnectionIndicator';
@@ -28,6 +31,12 @@ import {
   type NotificationItem,
   type NotificationStatus,
 } from '../lib/notifications';
+import {
+  applyNotificationFilter,
+  readNotificationFilter,
+  writeNotificationFilter,
+  type NotificationFilter,
+} from '../lib/notification-filter';
 
 type LoadState =
   | { kind: 'loading' }
@@ -93,6 +102,7 @@ function fetchErrorMessage(result: Extract<FetchResult, { ok: false }>): string 
 
 const NotificationsPage: React.FC = () => {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  const [filter, setFilter] = useState<NotificationFilter>('all');
 
   const refresh = useCallback(
     async (pairing: Pairing): Promise<void> => {
@@ -116,8 +126,12 @@ const NotificationsPage: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const pairing = await loadPairing();
+      const [pairing, persistedFilter] = await Promise.all([
+        loadPairing(),
+        readNotificationFilter(),
+      ]);
       if (cancelled) return;
+      setFilter(persistedFilter);
       if (!pairing) {
         setState({ kind: 'empty-no-pairing' });
         return;
@@ -145,10 +159,22 @@ const NotificationsPage: React.FC = () => {
     [refresh],
   );
 
+  const handleFilterChange = useCallback(
+    (event: CustomEvent<SegmentChangeEventDetail>): void => {
+      const next = event.detail.value;
+      if (next !== 'all' && next !== 'patterns') return;
+      setFilter(next);
+      void writeNotificationFilter(next);
+    },
+    [],
+  );
+
   const partition = useMemo(() => {
     if (state.kind !== 'ready') return null;
-    return partitionNotifications(state.items);
-  }, [state]);
+    return partitionNotifications(applyNotificationFilter(state.items, filter));
+  }, [state, filter]);
+
+  const filterAnnotation = filter === 'patterns' ? '(filtered: patterns)' : null;
 
   return (
     <IonPage>
@@ -156,6 +182,20 @@ const NotificationsPage: React.FC = () => {
         <IonToolbar>
           <IonTitle>Notifications</IonTitle>
           <ConnectionIndicator slot="end" />
+        </IonToolbar>
+        <IonToolbar>
+          <IonSegment
+            value={filter}
+            onIonChange={handleFilterChange}
+            aria-label="Notification type filter"
+          >
+            <IonSegmentButton value="all">
+              <IonLabel>All</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="patterns">
+              <IonLabel>Patterns</IonLabel>
+            </IonSegmentButton>
+          </IonSegment>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
@@ -198,7 +238,14 @@ const NotificationsPage: React.FC = () => {
 
             <IonList>
               <IonListHeader>
-                <IonLabel>Today</IonLabel>
+                <IonLabel>
+                  Today
+                  {filterAnnotation ? (
+                    <IonText color="medium">
+                      <small className="ml-2">{filterAnnotation}</small>
+                    </IonText>
+                  ) : null}
+                </IonLabel>
               </IonListHeader>
               {partition.today.length === 0 ? (
                 <IonItem lines="none">
@@ -217,7 +264,14 @@ const NotificationsPage: React.FC = () => {
 
             <IonList>
               <IonListHeader>
-                <IonLabel>Earlier</IonLabel>
+                <IonLabel>
+                  Earlier
+                  {filterAnnotation ? (
+                    <IonText color="medium">
+                      <small className="ml-2">{filterAnnotation}</small>
+                    </IonText>
+                  ) : null}
+                </IonLabel>
               </IonListHeader>
               {partition.earlier.length === 0 ? (
                 <IonItem lines="none">
