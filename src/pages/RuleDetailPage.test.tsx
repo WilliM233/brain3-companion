@@ -93,12 +93,26 @@ function makeFire(overrides: Partial<NotificationItem> = {}): NotificationItem {
   return {
     id: overrides.id ?? 'n-1',
     notification_type: overrides.notification_type ?? 'habit_nudge',
+    delivery_type: overrides.delivery_type ?? 'notification',
     message: overrides.message ?? 'Test message',
     scheduled_at: overrides.scheduled_at ?? '2026-05-09T08:00:00Z',
     scheduled_date: overrides.scheduled_date ?? '2026-05-09',
     status: overrides.status ?? 'delivered',
-    expires_at: overrides.expires_at ?? '2026-05-09T20:00:00Z',
+    expires_at:
+      overrides.expires_at !== undefined
+        ? overrides.expires_at
+        : '2026-05-09T20:00:00Z',
     response: overrides.response ?? null,
+    response_note: overrides.response_note ?? null,
+    responded_at: overrides.responded_at ?? null,
+    canned_responses: overrides.canned_responses ?? null,
+    target_entity_type: overrides.target_entity_type ?? 'habit',
+    target_entity_id:
+      overrides.target_entity_id ?? '11111111-1111-1111-1111-111111111111',
+    scheduled_by: overrides.scheduled_by ?? 'system',
+    rule_id: overrides.rule_id ?? null,
+    created_at: overrides.created_at ?? '2026-05-09T07:00:00Z',
+    updated_at: overrides.updated_at ?? '2026-05-09T07:00:00Z',
   };
 }
 

@@ -19,6 +19,7 @@ import {
   type SegmentChangeEventDetail,
 } from '@ionic/react';
 import { format, parseISO } from 'date-fns';
+import { useHistory } from 'react-router-dom';
 import ConnectionIndicator from '../components/ConnectionIndicator';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
@@ -101,8 +102,16 @@ function fetchErrorMessage(result: Extract<FetchResult, { ok: false }>): string 
 }
 
 const NotificationsPage: React.FC = () => {
+  const history = useHistory();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [filter, setFilter] = useState<NotificationFilter>('all');
+
+  const onRowTap = useCallback(
+    (item: NotificationItem): void => {
+      history.push(`/notifications/${item.id}`);
+    },
+    [history],
+  );
 
   const refresh = useCallback(
     async (pairing: Pairing): Promise<void> => {
@@ -257,7 +266,7 @@ const NotificationsPage: React.FC = () => {
                 </IonItem>
               ) : (
                 partition.today.map((item) => (
-                  <NotificationRow key={item.id} item={item} />
+                  <NotificationRow key={item.id} item={item} onTap={onRowTap} />
                 ))
               )}
             </IonList>
@@ -283,7 +292,11 @@ const NotificationsPage: React.FC = () => {
                 </IonItem>
               ) : (
                 partition.earlier.map((group) => (
-                  <EarlierDayGroup key={group.date} group={group} />
+                  <EarlierDayGroup
+                    key={group.date}
+                    group={group}
+                    onRowTap={onRowTap}
+                  />
                 ))
               )}
             </IonList>
@@ -294,7 +307,15 @@ const NotificationsPage: React.FC = () => {
   );
 };
 
-const EarlierDayGroup: React.FC<{ group: EarlierGroup }> = ({ group }) => (
+interface EarlierDayGroupProps {
+  group: EarlierGroup;
+  onRowTap: (item: NotificationItem) => void;
+}
+
+const EarlierDayGroup: React.FC<EarlierDayGroupProps> = ({
+  group,
+  onRowTap,
+}) => (
   <>
     <IonItem lines="none" className="ion-margin-top">
       <IonLabel>
@@ -304,13 +325,22 @@ const EarlierDayGroup: React.FC<{ group: EarlierGroup }> = ({ group }) => (
       </IonLabel>
     </IonItem>
     {group.items.map((item) => (
-      <NotificationRow key={item.id} item={item} />
+      <NotificationRow key={item.id} item={item} onTap={onRowTap} />
     ))}
   </>
 );
 
-const NotificationRow: React.FC<{ item: NotificationItem }> = ({ item }) => (
-  <IonItem>
+interface NotificationRowProps {
+  item: NotificationItem;
+  onTap: (item: NotificationItem) => void;
+}
+
+const NotificationRow: React.FC<NotificationRowProps> = ({ item, onTap }) => (
+  <IonItem
+    button
+    onClick={() => onTap(item)}
+    data-testid={`notification-row-${item.id}`}
+  >
     <IonLabel className="ion-text-wrap">
       <h2>{item.notification_type}</h2>
       <p>{item.message}</p>
