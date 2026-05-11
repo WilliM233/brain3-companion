@@ -23,6 +23,7 @@ import {
 import { initWriteQueue } from './lib/writeQueue';
 import { initCompletionQueues } from './lib/completionQueues';
 import { ConnectionStateProvider } from './lib/connection/ConnectionStateProvider';
+import PermanentFailureToast from './components/PermanentFailureToast';
 import {
   clearPendingIntent,
   pendingIntentRoute,
@@ -151,6 +152,7 @@ const App: React.FC = () => (
       <IonApp>
         <DeviceRegistrar />
         <WriteQueueRunner />
+        <PermanentFailureToast />
         <IonReactRouter>
           <PendingIntentRunner />
           <IonRouterOutlet>

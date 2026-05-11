@@ -29,8 +29,11 @@ import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { Network } from '@capacitor/network';
 import {
+  classifyHttpStatus,
   createWriteQueue,
   flushWriteQueue,
+  parseRetryAfter,
+  readServerMessage,
   type FlushSummary,
   type QueueFlushSummary,
 } from './writeQueue';
@@ -194,28 +197,45 @@ const habitQueue = createWriteQueue<HabitCompletionEntry>(
         return { kind: 'stop' };
       }
 
-      if (response.status === 200 || response.status === 201) {
-        return { kind: 'remove' };
-      }
+      const cls = classifyHttpStatus(response.status);
+      if (cls === 'success') return { kind: 'remove' };
       if (response.status === 400) {
+        // [2C-23]'s habit-paused path: drops + emits a `paused` warning the
+        // habit detail UX surfaces. Stays out of the [2C-29] failures log
+        // per Pass 5 §3 [2C-29] Scope "(except [2C-23]'s habit 400 paused
+        // path which already drops + toasts)".
         const paused = await bodyContainsPaused(response);
         if (paused) {
           emitHabitWarning({ kind: 'paused', habit_id: entry.habit_id });
           return { kind: 'discard' };
         }
-        // Other 400s: malformed payload, etc. Drop to avoid a poison-pill loop
-        // and log; the entry is otherwise unrecoverable on retry.
-        console.warn(
-          `[habitCompletions] dropping ${entry.habit_id}: 400 with non-paused detail`,
-        );
-        return { kind: 'discard' };
       }
-      if (response.status === 404) {
-        console.warn(
-          `[habitCompletions] dropping ${entry.habit_id}: habit not found (404)`,
-        );
-        emitHabitWarning({ kind: 'not_found', habit_id: entry.habit_id });
-        return { kind: 'discard' };
+      if (cls === 'terminal') {
+        if (response.status === 404) {
+          // 404 keeps its [2C-23] not_found warning AND records to the
+          // failures log — habit-specific UX and the cross-queue toast are
+          // independent surfaces.
+          console.warn(
+            `[habitCompletions] dropping ${entry.habit_id}: habit not found (404)`,
+          );
+          emitHabitWarning({ kind: 'not_found', habit_id: entry.habit_id });
+        } else {
+          console.warn(
+            `[habitCompletions] dropping ${entry.habit_id}: terminal ${response.status}`,
+          );
+        }
+        const serverMessage = await readServerMessage(response);
+        return {
+          kind: 'discard',
+          failure: {
+            http_status: response.status,
+            server_message: serverMessage,
+          },
+        };
+      }
+      if (response.status === 429) {
+        const retryAfterMs = parseRetryAfter(response.headers.get('Retry-After'));
+        return { kind: 'stop', retryAfterMs };
       }
       return { kind: 'stop' };
     },
@@ -247,24 +267,12 @@ const routineQueue = createWriteQueue<RoutineCompletionEntry>(
         return { kind: 'stop' };
       }
 
-      if (response.status === 200 || response.status === 201) {
-        return { kind: 'remove' };
-      }
-      if (response.status === 404) {
-        console.warn(
-          `[routineCompletions] dropping ${entry.routine_id}: routine not found (404)`,
-        );
-        emitRoutineWarning({
-          kind: 'not_found',
-          routine_id: entry.routine_id,
-          status: entry.status,
-        });
-        return { kind: 'discard' };
-      }
-      if (response.status === 409) {
-        // Server returns 409 for non-active routines. Mirror habit's 400-paused
-        // pattern: log + warn + drop so the queue does not stall on a routine
-        // that was paused or archived after the entry was enqueued.
+      const cls = classifyHttpStatus(response.status);
+      if (cls === 'success') return { kind: 'remove' };
+      if (cls === 'conflict') {
+        // Server returns 409 for non-active routines. Mirrors habit's
+        // 400-paused pattern: routine-specific warning is the visibility
+        // channel, so the entry drops without entering the failures log.
         console.warn(
           `[routineCompletions] dropping ${entry.routine_id}: routine not active (409)`,
         );
@@ -274,6 +282,34 @@ const routineQueue = createWriteQueue<RoutineCompletionEntry>(
           status: entry.status,
         });
         return { kind: 'discard' };
+      }
+      if (cls === 'terminal') {
+        if (response.status === 404) {
+          console.warn(
+            `[routineCompletions] dropping ${entry.routine_id}: routine not found (404)`,
+          );
+          emitRoutineWarning({
+            kind: 'not_found',
+            routine_id: entry.routine_id,
+            status: entry.status,
+          });
+        } else {
+          console.warn(
+            `[routineCompletions] dropping ${entry.routine_id}: terminal ${response.status}`,
+          );
+        }
+        const serverMessage = await readServerMessage(response);
+        return {
+          kind: 'discard',
+          failure: {
+            http_status: response.status,
+            server_message: serverMessage,
+          },
+        };
+      }
+      if (response.status === 429) {
+        const retryAfterMs = parseRetryAfter(response.headers.get('Retry-After'));
+        return { kind: 'stop', retryAfterMs };
       }
       return { kind: 'stop' };
     },
