@@ -245,7 +245,7 @@ describe('CheckinsPage — navigation', () => {
 });
 
 describe('CheckinsPage — offline cache', () => {
-  it('renders cached items + cache hint when the network fetch fails', async () => {
+  it('renders cached items from initialData when the network fetch fails', async () => {
     pair();
     seedCache([
       makeCheckin({
@@ -258,11 +258,11 @@ describe('CheckinsPage — offline cache', () => {
 
     renderPage();
 
+    // Cache-fallback affordance: cached rows render. The "this is cached"
+    // affordance moved to the [2C-28] StalenessBanner (connection-state
+    // gated; covered in StalenessBanner.test.tsx).
     expect(await screen.findByText('Midday check-in')).toBeInTheDocument();
     expect(screen.getByText('cached entry')).toBeInTheDocument();
-    expect(
-      await screen.findByText(/showing cached data/i),
-    ).toBeInTheDocument();
   });
 });
 

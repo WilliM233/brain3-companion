@@ -411,7 +411,7 @@ describe('HabitsPage — quick-complete optimistic flip', () => {
 });
 
 describe('HabitsPage — offline cache render', () => {
-  it('renders cached items and the cache hint when the network fetch fails', async () => {
+  it('renders cached items from initialData when the network fetch fails', async () => {
     pair();
     seedCache([
       makeHabit({
@@ -426,12 +426,10 @@ describe('HabitsPage — offline cache render', () => {
 
     renderPage();
 
-    // Cached item paints immediately from initialData.
+    // Cached item paints immediately from initialData. The user-facing
+    // "this is cached" affordance is the [2C-28] StalenessBanner, which is
+    // connection-state gated (covered in StalenessBanner.test.tsx) rather
+    // than gated on a single failed fetch as the prior inline hint was.
     expect(await screen.findByText('Cached habit')).toBeInTheDocument();
-
-    // The fetch failure surfaces the cache hint.
-    expect(
-      await screen.findByText(/showing cached data/i),
-    ).toBeInTheDocument();
   });
 });
