@@ -22,6 +22,7 @@ import {
 } from './lib/device-registration';
 import { initWriteQueue } from './lib/writeQueue';
 import { initCompletionQueues } from './lib/completionQueues';
+import { ConnectionStateProvider } from './lib/connection/ConnectionStateProvider';
 import {
   clearPendingIntent,
   pendingIntentRoute,
@@ -146,58 +147,60 @@ const PendingIntentRunner: React.FC = () => {
 
 const App: React.FC = () => (
   <QueryClientProvider client={queryClient}>
-    <IonApp>
-      <DeviceRegistrar />
-      <WriteQueueRunner />
-      <IonReactRouter>
-        <PendingIntentRunner />
-        <IonRouterOutlet>
-          <Route exact path="/settings">
-            <SettingsPage />
-          </Route>
-          <Route exact path="/notifications">
-            <NotificationsPage />
-          </Route>
-          <Route exact path="/notifications/:notificationId">
-            <NotificationDetailPage />
-          </Route>
-          <Route exact path="/habits">
-            <HabitsPage />
-          </Route>
-          <Route exact path="/habits/:habitId">
-            <HabitDetailPage />
-          </Route>
-          <Route exact path="/routines">
-            <RoutinesPage />
-          </Route>
-          <Route exact path="/routines/:routineId">
-            <RoutineDetailPage />
-          </Route>
-          <Route exact path="/checkins">
-            <CheckinsPage />
-          </Route>
-          {/* [2C-19] Note-entry route — declared before /checkins/:checkinId
-              so the literal "notes" segment matches first under react-router 5
-              non-exact resolution. The `exact` flag also keeps both routes
-              isolated. */}
-          <Route exact path="/checkins/notes/:notificationId">
-            <CheckinNoteEntryPage />
-          </Route>
-          <Route exact path="/checkins/:checkinId">
-            <CheckinDetailPage />
-          </Route>
-          <Route exact path="/rules">
-            <RulesPage />
-          </Route>
-          <Route exact path="/rules/:ruleId">
-            <RuleDetailPage />
-          </Route>
-          <Route exact path="/">
-            <RootRedirect />
-          </Route>
-        </IonRouterOutlet>
-      </IonReactRouter>
-    </IonApp>
+    <ConnectionStateProvider>
+      <IonApp>
+        <DeviceRegistrar />
+        <WriteQueueRunner />
+        <IonReactRouter>
+          <PendingIntentRunner />
+          <IonRouterOutlet>
+            <Route exact path="/settings">
+              <SettingsPage />
+            </Route>
+            <Route exact path="/notifications">
+              <NotificationsPage />
+            </Route>
+            <Route exact path="/notifications/:notificationId">
+              <NotificationDetailPage />
+            </Route>
+            <Route exact path="/habits">
+              <HabitsPage />
+            </Route>
+            <Route exact path="/habits/:habitId">
+              <HabitDetailPage />
+            </Route>
+            <Route exact path="/routines">
+              <RoutinesPage />
+            </Route>
+            <Route exact path="/routines/:routineId">
+              <RoutineDetailPage />
+            </Route>
+            <Route exact path="/checkins">
+              <CheckinsPage />
+            </Route>
+            {/* [2C-19] Note-entry route — declared before /checkins/:checkinId
+                so the literal "notes" segment matches first under react-router 5
+                non-exact resolution. The `exact` flag also keeps both routes
+                isolated. */}
+            <Route exact path="/checkins/notes/:notificationId">
+              <CheckinNoteEntryPage />
+            </Route>
+            <Route exact path="/checkins/:checkinId">
+              <CheckinDetailPage />
+            </Route>
+            <Route exact path="/rules">
+              <RulesPage />
+            </Route>
+            <Route exact path="/rules/:ruleId">
+              <RuleDetailPage />
+            </Route>
+            <Route exact path="/">
+              <RootRedirect />
+            </Route>
+          </IonRouterOutlet>
+        </IonReactRouter>
+      </IonApp>
+    </ConnectionStateProvider>
   </QueryClientProvider>
 );
 
