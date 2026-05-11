@@ -21,6 +21,7 @@ import {
 import { useHistory } from 'react-router-dom';
 
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import StalenessBanner from '../components/StalenessBanner';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
   composeNumericSubtitle,
@@ -144,8 +145,6 @@ const CheckinsBody: React.FC<BodyProps> = ({
   });
 
   const items = checkinsQuery.data;
-  const showCacheHint =
-    checkinsQuery.isError && items !== undefined && items.length >= 0;
 
   const handleRefresh = useCallback(
     async (event: CustomEvent<RefresherEventDetail>): Promise<void> => {
@@ -171,15 +170,7 @@ const CheckinsBody: React.FC<BodyProps> = ({
         <IonRefresherContent />
       </IonRefresher>
 
-      {showCacheHint ? (
-        <div
-          className="px-4 pt-3 text-sm text-neutral-300"
-          role="status"
-          aria-live="polite"
-        >
-          Showing cached data
-        </div>
-      ) : null}
+      <StalenessBanner />
 
       {items !== undefined && items.length === 0 ? (
         <div className="flex h-full w-full items-center justify-center px-4 text-center text-neutral-300">

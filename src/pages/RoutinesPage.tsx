@@ -22,6 +22,7 @@ import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 import { useHistory } from 'react-router-dom';
 
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import StalenessBanner from '../components/StalenessBanner';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
   fetchActiveRoutines,
@@ -158,8 +159,6 @@ const RoutinesBody: React.FC<BodyProps> = ({
   });
 
   const items = routinesQuery.data;
-  const showCacheHint =
-    routinesQuery.isError && items !== undefined && items.length >= 0;
 
   const sortedItems = useMemo(
     () => (items ? sortRoutinesByTitle(items) : null),
@@ -190,15 +189,7 @@ const RoutinesBody: React.FC<BodyProps> = ({
         <IonRefresherContent />
       </IonRefresher>
 
-      {showCacheHint ? (
-        <div
-          className="px-4 pt-3 text-sm text-neutral-300"
-          role="status"
-          aria-live="polite"
-        >
-          Showing cached data
-        </div>
-      ) : null}
+      <StalenessBanner />
 
       {sortedItems && sortedItems.length === 0 ? (
         <div className="flex h-full w-full items-center justify-center px-4 text-center text-neutral-300">
