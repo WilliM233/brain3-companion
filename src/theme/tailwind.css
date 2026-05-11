@@ -1,3 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* [2C-27] Connection-indicator `syncing` pulse — green dot fades 1.0 → 0.4 → 1.0
+   so the user perceives an active flush without an alarming color shift. */
+@keyframes connection-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

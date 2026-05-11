@@ -22,6 +22,7 @@
 
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { Network } from '@capacitor/network';
 import { Preferences } from '@capacitor/preferences';
 import { composeCheckinFromCanned } from './checkin-parser';
 import type { CheckinType } from './checkins';
@@ -454,11 +455,22 @@ export function initWriteQueue(): () => void {
     });
   }
 
-  if (typeof window !== 'undefined') {
-    const onlineHandler = (): void => safeFlush();
-    window.addEventListener('online', onlineHandler);
-    cleanups.push(() => window.removeEventListener('online', onlineHandler));
+  // [2C-27] Reachability detection moved from `window.online` to the
+  // Capacitor Network plugin. On native Android the browser-level `online`
+  // event is unreliable — Capacitor's `networkStatusChange` is the
+  // authoritative source. The flush-on-reachable contract from [2C-07] is
+  // preserved; only the detector changed.
+  let networkHandle: { remove: () => void } | null = null;
+  void Network.addListener('networkStatusChange', (status) => {
+    if (status.connected) safeFlush();
+  }).then((handle) => {
+    networkHandle = handle;
+  });
+  cleanups.push(() => {
+    networkHandle?.remove();
+  });
 
+  if (typeof window !== 'undefined') {
     const bridgeHandler = (): void => safeFlush();
     window.addEventListener(BRIDGE_EVENT_NAME, bridgeHandler);
     cleanups.push(() =>

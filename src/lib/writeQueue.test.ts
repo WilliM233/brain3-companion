@@ -21,6 +21,13 @@ vi.mock('@capacitor/app', () => ({
   },
 }));
 
+vi.mock('@capacitor/network', () => ({
+  Network: {
+    getStatus: vi.fn(async () => ({ connected: true, connectionType: 'wifi' })),
+    addListener: vi.fn(async () => ({ remove: vi.fn() })),
+  },
+}));
+
 vi.mock('@capacitor/push-notifications', () => ({
   PushNotifications: {
     requestPermissions: vi.fn(),
