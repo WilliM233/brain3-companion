@@ -21,6 +21,13 @@ vi.mock('@capacitor/app', () => ({
   },
 }));
 
+vi.mock('@capacitor/network', () => ({
+  Network: {
+    getStatus: vi.fn(async () => ({ connected: true, connectionType: 'wifi' })),
+    addListener: vi.fn(async () => ({ remove: vi.fn() })),
+  },
+}));
+
 import { Preferences } from '@capacitor/preferences';
 import { PAIRING_TOKEN_KEY, PAIRING_URL_KEY } from './pairing';
 import {

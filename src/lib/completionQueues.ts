@@ -27,6 +27,7 @@
 
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { Network } from '@capacitor/network';
 import {
   createWriteQueue,
   flushWriteQueue,
@@ -376,11 +377,17 @@ export function initCompletionQueues(): () => void {
     });
   }
 
-  if (typeof window !== 'undefined') {
-    const onlineHandler = (): void => safeFlushBoth();
-    window.addEventListener('online', onlineHandler);
-    cleanups.push(() => window.removeEventListener('online', onlineHandler));
-  }
+  // [2C-27] Reachability detection moved from `window.online` to the
+  // Capacitor Network plugin to mirror the notification queue.
+  let networkHandle: { remove: () => void } | null = null;
+  void Network.addListener('networkStatusChange', (status) => {
+    if (status.connected) safeFlushBoth();
+  }).then((handle) => {
+    networkHandle = handle;
+  });
+  cleanups.push(() => {
+    networkHandle?.remove();
+  });
 
   return () => {
     for (const cleanup of cleanups) {
