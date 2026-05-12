@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useHistory } from 'react-router-dom';
 import {
+  IonAlert,
   IonButton,
   IonContent,
   IonHeader,
@@ -16,9 +17,13 @@ import {
   IonToolbar,
 } from '@ionic/react';
 import { eye, eyeOff } from 'ionicons/icons';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   clearPairing,
+  computeTokenHash,
   loadPairing,
+  loadPreviousPairingUrl,
+  loadStoredTokenHash,
   savePairing,
   type Pairing,
 } from '../lib/pairing';
@@ -29,9 +34,13 @@ import {
   subscribeRegistration,
   type RegistrationStatus,
 } from '../lib/device-registration';
+import { wipeCacheAndQueueForPairingChange } from '../lib/cacheWipe';
 import ConnectionIndicator from '../components/ConnectionIndicator';
 import PendingSyncSection from '../components/PendingSyncSection';
 import ClearLocalCacheSection from '../components/ClearLocalCacheSection';
+
+const WIPE_CONFIRM_MESSAGE =
+  'This will clear all cached data and any pending sync items from the previous pairing. Continue?';
 
 const MIN_TOKEN_LENGTH = 8;
 
@@ -59,6 +68,7 @@ function fcmTokenPreview(status: RegistrationStatus): string {
 
 const SettingsPage: React.FC = () => {
   const history = useHistory();
+  const queryClient = useQueryClient();
   const [storedPairing, setStoredPairing] = useState<Pairing | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [url, setUrl] = useState('');
@@ -72,6 +82,14 @@ const SettingsPage: React.FC = () => {
   const [registration, setRegistration] = useState<RegistrationStatus>(
     getRegistrationStatus(),
   );
+  /**
+   * [2C-31] Set when pingHealth succeeds for a token+URL combination that
+   * differs from the markers persisted by the previous pairing. The
+   * confirmation modal renders off this state; commit (savePairing + wipe)
+   * runs from the `Continue` handler so cancel leaves the previous pairing
+   * intact.
+   */
+  const [pendingWipe, setPendingWipe] = useState<Pairing | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,6 +137,15 @@ const SettingsPage: React.FC = () => {
     );
   };
 
+  const commitPairing = async (
+    nextUrl: string,
+    nextToken: string,
+  ): Promise<void> => {
+    await savePairing(nextUrl, nextToken);
+    setToastMessage('Connected to BRAIN');
+    history.replace('/notifications');
+  };
+
   const handleConnect = async () => {
     if (!canConnect) return;
     setSubmitting(true);
@@ -128,9 +155,22 @@ const SettingsPage: React.FC = () => {
     try {
       const result = await pingHealth(trimmedUrl, trimmedToken);
       if (result.ok) {
-        await savePairing(trimmedUrl, trimmedToken);
-        setToastMessage('Connected to BRAIN');
-        history.replace('/notifications');
+        // [2C-31] Wipe-on-token-change: gate on successful validation. An
+        // invalid-token typo never reaches this branch, so the previous
+        // pairing's cache + queue survive a failed pingHealth (MV step 3).
+        const [storedHash, previousUrl] = await Promise.all([
+          loadStoredTokenHash(),
+          loadPreviousPairingUrl(),
+        ]);
+        const newHash = await computeTokenHash(trimmedToken);
+        const isPairingChange =
+          storedHash !== null &&
+          (newHash !== storedHash || trimmedUrl !== previousUrl);
+        if (isPairingChange) {
+          setPendingWipe({ url: trimmedUrl, token: trimmedToken });
+          return;
+        }
+        await commitPairing(trimmedUrl, trimmedToken);
         return;
       }
       switch (result.reason) {
@@ -152,6 +192,22 @@ const SettingsPage: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleWipeConfirm = async (): Promise<void> => {
+    if (!pendingWipe) return;
+    const target = pendingWipe;
+    setPendingWipe(null);
+    try {
+      await wipeCacheAndQueueForPairingChange(queryClient);
+      await commitPairing(target.url, target.token);
+    } catch {
+      setToastMessage('Could not save pairing. Try again.');
+    }
+  };
+
+  const handleWipeCancel = (): void => {
+    setPendingWipe(null);
   };
 
   const handleRepair = async () => {
@@ -313,6 +369,31 @@ const SettingsPage: React.FC = () => {
           message={toastMessage ?? ''}
           duration={4000}
           onDidDismiss={() => setToastMessage(null)}
+        />
+
+        <IonAlert
+          isOpen={pendingWipe !== null}
+          header="Clear data from previous pairing?"
+          message={WIPE_CONFIRM_MESSAGE}
+          buttons={[
+            {
+              text: 'Cancel',
+              role: 'cancel',
+              handler: handleWipeCancel,
+            },
+            {
+              text: 'Continue',
+              role: 'destructive',
+              handler: () => {
+                void handleWipeConfirm();
+              },
+            },
+          ]}
+          onDidDismiss={() => {
+            if (pendingWipe !== null) setPendingWipe(null);
+            setSubmitting(false);
+          }}
+          data-testid="wipe-confirm-modal"
         />
       </IonContent>
     </IonPage>

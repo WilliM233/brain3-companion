@@ -22,7 +22,9 @@ import {
 } from './lib/device-registration';
 import { initWriteQueue } from './lib/writeQueue';
 import { initCompletionQueues } from './lib/completionQueues';
+import { useCacheSeed } from './lib/cacheSeed';
 import { ConnectionStateProvider } from './lib/connection/ConnectionStateProvider';
+import CacheSeedOverlay from './components/CacheSeedOverlay';
 import PermanentFailureToast from './components/PermanentFailureToast';
 import {
   clearPendingIntent,
@@ -109,6 +111,17 @@ const WriteQueueRunner: React.FC = () => {
 };
 
 /**
+ * [2C-31] Mounts the cache-seed hook once at the app root. The hook
+ * subscribes to pairing events and runs the five parallel seed fetches on
+ * pairing-complete (idempotent per token hash). State flips drive
+ * {@link CacheSeedOverlay}'s "Setting up…" overlay.
+ */
+const CacheSeedRunner: React.FC = () => {
+  useCacheSeed();
+  return null;
+};
+
+/**
  * [2C-19] Bridge for native-side pending intents — the FCM "Add note" tap
  * on a `checkin_prompt` notification writes a slot via Kotlin
  * `PendingIntentStore`; this hook drains it on mount and on
@@ -152,6 +165,8 @@ const App: React.FC = () => (
       <IonApp>
         <DeviceRegistrar />
         <WriteQueueRunner />
+        <CacheSeedRunner />
+        <CacheSeedOverlay />
         <PermanentFailureToast />
         <IonReactRouter>
           <PendingIntentRunner />
