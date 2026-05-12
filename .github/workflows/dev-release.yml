@@ -145,13 +145,28 @@ jobs:
             echo "> $(cat .commit-subject)"
           } > .release-notes
 
+      - name: Rename APK with short SHA
+        # Embed the commit short-SHA in the uploaded asset filename so
+        # provenance is mechanically verifiable from the filename alone after
+        # download — no APK Analyzer step required. Closes the recurrence
+        # vector for the [2C-Bug-05] AVD diagnostic stall, where a pre-fix
+        # APK was sideloaded in mistake for a post-fix build because the
+        # GitHub Releases visual sort was non-chronological. See [2C-Gap-03]
+        # (#53). Gated on `push` to match the publish steps below — PR runs
+        # never reach `gh release create`, so the renamed asset has no
+        # consumer on PR-triggered builds.
+        if: github.event_name == 'push'
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "android/app/build/outputs/apk/debug/brain3-companion-develop-${{ steps.meta.outputs.short_sha }}.apk"
+
       - name: Create GitHub pre-release
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ steps.meta.outputs.tag }}" \
-            android/app/build/outputs/apk/debug/app-debug.apk \
+            "android/app/build/outputs/apk/debug/brain3-companion-develop-${{ steps.meta.outputs.short_sha }}.apk" \
             --title "${{ steps.meta.outputs.title }}" \
             --notes-file .release-notes \
             --prerelease \
