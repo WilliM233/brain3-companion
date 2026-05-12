@@ -29,7 +29,9 @@ import { format, formatDistanceToNowStrict, parseISO } from 'date-fns';
 import { useHistory, useParams } from 'react-router-dom';
 
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import StalenessBanner from '../components/StalenessBanner';
 import StatusPill from '../components/StatusPill';
+import { useSurfaceLastSync } from '../lib/connection/useSurfaceLastSync';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
   fetchHabitCompletions,
@@ -253,10 +255,13 @@ const DetailBody: React.FC<BodyProps> = ({
   const habit = habitQuery.data;
   const graduation = graduationQuery.data;
   const completions = completionsQuery.data;
-  const showCacheHint =
-    habitQuery.isError &&
-    !isNotFoundError(habitQuery.error) &&
-    habit !== undefined;
+  // Per Pass 5 §3 [2C-28]: habit detail composes two cached queries; the
+  // banner reads the max `dataUpdatedAt` across both so the displayed
+  // "last synced X ago" matches the most recent of habit + graduation.
+  const surfaceLastSync = useSurfaceLastSync([
+    HABIT_QUERY_KEY(habitId),
+    HABIT_GRADUATION_QUERY_KEY(habitId),
+  ]);
 
   // Wire the [2C-23] habit-completion warning subscription. Per the Group 3
   // close ledger this surface lands in [2C-25] alongside the routine warning
@@ -506,15 +511,7 @@ const DetailBody: React.FC<BodyProps> = ({
         <IonRefresherContent />
       </IonRefresher>
 
-      {showCacheHint ? (
-        <div
-          className="px-4 pt-3 text-sm text-neutral-300"
-          role="status"
-          aria-live="polite"
-        >
-          Showing cached data
-        </div>
-      ) : null}
+      <StalenessBanner lastSyncedAt={surfaceLastSync} />
 
       <DefinitionPane
         habit={habit}

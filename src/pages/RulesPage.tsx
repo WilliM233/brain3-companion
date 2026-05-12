@@ -19,6 +19,7 @@ import { useHistory } from 'react-router-dom';
 
 import ConnectionIndicator from '../components/ConnectionIndicator';
 import RuleEnabledPill from '../components/RuleEnabledPill';
+import StalenessBanner from '../components/StalenessBanner';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
   RULES_QUERY_KEY,
@@ -140,8 +141,6 @@ const RulesBody: React.FC<BodyProps> = ({
   });
 
   const items = rulesQuery.data;
-  const showCacheHint =
-    rulesQuery.isError && items !== undefined && items.length >= 0;
 
   const sorted = useMemo(
     () => (items ? sortRulesForList(items) : null),
@@ -172,15 +171,7 @@ const RulesBody: React.FC<BodyProps> = ({
         <IonRefresherContent />
       </IonRefresher>
 
-      {showCacheHint ? (
-        <div
-          className="px-4 pt-3 text-sm text-neutral-300"
-          role="status"
-          aria-live="polite"
-        >
-          Showing cached data
-        </div>
-      ) : null}
+      <StalenessBanner />
 
       {sorted !== null && sorted.length === 0 ? (
         <div className="flex h-full w-full items-center justify-center px-4 text-center text-neutral-300">

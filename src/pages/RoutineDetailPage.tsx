@@ -30,6 +30,7 @@ import { format, formatDistanceToNowStrict, parseISO } from 'date-fns';
 import { useHistory, useParams } from 'react-router-dom';
 
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import StalenessBanner from '../components/StalenessBanner';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
   fetchRoutineDetail,
@@ -301,11 +302,6 @@ const DetailBody: React.FC<BodyProps> = ({
     return () => unsubscribe();
   }, [routineId]);
 
-  const showCacheHint =
-    routineQuery.isError &&
-    !isNotFoundError(routineQuery.error) &&
-    routine !== undefined;
-
   const handleRefresh = useCallback(
     async (event: CustomEvent<RefresherEventDetail>): Promise<void> => {
       try {
@@ -479,15 +475,7 @@ const DetailBody: React.FC<BodyProps> = ({
           <IonRefresherContent />
         </IonRefresher>
 
-        {showCacheHint ? (
-          <div
-            className="px-4 pt-3 text-sm text-neutral-300"
-            role="status"
-            aria-live="polite"
-          >
-            Showing cached data
-          </div>
-        ) : null}
+        <StalenessBanner />
 
         <HeaderPane routine={routine} />
 

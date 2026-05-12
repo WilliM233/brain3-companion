@@ -24,6 +24,7 @@ import { useHistory, useParams } from 'react-router-dom';
 
 import ConnectionIndicator from '../components/ConnectionIndicator';
 import RuleEnabledPill from '../components/RuleEnabledPill';
+import StalenessBanner from '../components/StalenessBanner';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
   fetchRule,
@@ -199,6 +200,8 @@ const DetailBody: React.FC<BodyProps> = ({ ruleId, pairing }) => {
       <IonRefresher slot="fixed" onIonRefresh={handleRefresh}>
         <IonRefresherContent />
       </IonRefresher>
+
+      <StalenessBanner />
 
       <DefinitionPane rule={rule} onCopyEntityId={onCopyEntityId} />
 

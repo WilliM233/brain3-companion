@@ -28,6 +28,7 @@ import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 import { useHistory } from 'react-router-dom';
 
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import StalenessBanner from '../components/StalenessBanner';
 import StatusPill from '../components/StatusPill';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
@@ -168,8 +169,6 @@ const HabitsBody: React.FC<BodyProps> = ({
   });
 
   const items = habitsQuery.data;
-  const showCacheHint =
-    habitsQuery.isError && items !== undefined && items.length >= 0;
 
   const partitioned = useMemo(
     () => (items ? partitionAndSortHabits(items) : null),
@@ -254,15 +253,7 @@ const HabitsBody: React.FC<BodyProps> = ({
         <IonRefresherContent />
       </IonRefresher>
 
-      {showCacheHint ? (
-        <div
-          className="px-4 pt-3 text-sm text-neutral-300"
-          role="status"
-          aria-live="polite"
-        >
-          Showing cached data
-        </div>
-      ) : null}
+      <StalenessBanner />
 
       {partitioned &&
       partitioned.primary.length === 0 &&

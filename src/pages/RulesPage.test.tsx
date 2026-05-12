@@ -266,7 +266,7 @@ describe('RulesPage — navigation', () => {
 });
 
 describe('RulesPage — offline cache', () => {
-  it('renders cached items + cache hint when the network fetch fails', async () => {
+  it('renders cached items from initialData when the network fetch fails', async () => {
     pair();
     seedCache([
       makeRule({ id: 'r-cached', name: 'Cached rule', enabled: true }),
@@ -275,10 +275,10 @@ describe('RulesPage — offline cache', () => {
 
     renderPage();
 
+    // Cache-fallback affordance: cached row renders. The "this is cached"
+    // user signal moved to the [2C-28] StalenessBanner (connection-state
+    // gated; covered in StalenessBanner.test.tsx).
     expect(await screen.findByText('Cached rule')).toBeInTheDocument();
-    expect(
-      await screen.findByText(/showing cached data/i),
-    ).toBeInTheDocument();
   });
 });
 

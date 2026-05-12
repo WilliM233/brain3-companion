@@ -21,6 +21,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { useHistory } from 'react-router-dom';
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import StalenessBanner from '../components/StalenessBanner';
 import { loadPairing, type Pairing } from '../lib/pairing';
 import {
   fetchNotifications,
@@ -233,18 +234,10 @@ const NotificationsPage: React.FC = () => {
           </div>
         ) : null}
 
+        <StalenessBanner />
+
         {state.kind === 'ready' && partition ? (
           <>
-            {state.fromCache ? (
-              <div
-                className="px-4 pt-3 text-sm text-neutral-300"
-                role="status"
-                aria-live="polite"
-              >
-                Showing cached data
-              </div>
-            ) : null}
-
             <IonList>
               <IonListHeader>
                 <IonLabel>
