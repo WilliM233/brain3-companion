@@ -46,3 +46,18 @@ jobs:
         # Non-interactive after [2C-Bug-06] (#56): `test.unit` invokes
         # `vitest run`, so this step exits cleanly in CI shells.
         run: npm run test.unit
+
+      - name: Android sync structural guard
+        # Regenerates Capacitor-managed android/ artifacts from
+        # package.json plugin metadata and fails the build if any
+        # uncommitted delta surfaces. Catches the class of drift codified
+        # in repo CLAUDE.md §"Android Sync Structural Guard" (precedent:
+        # [2C-Gap-02] (#49) — @capacitor/device@6.0.3 added to package.json
+        # in [2C-05] without the paired android:sync commit). Placed last
+        # so the cheaper lint/typecheck/test gates fail fast first.
+        run: |
+          npm run android:sync
+          if ! git diff --exit-code android/; then
+            echo "::error::npm run android:sync produced uncommitted changes in android/. See repo CLAUDE.md 'Android Sync Structural Guard' for the convention. Run 'npm run android:sync' locally and commit the regenerated android/ artifacts."
+            exit 1
+          fi
