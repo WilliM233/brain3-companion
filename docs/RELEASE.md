@@ -26,7 +26,7 @@ GitHub Actions workflow at [`.github/workflows/dev-release.yml`](../.github/work
 7. Publishes a **pre-release** to GitHub Releases with:
    - Tag: `develop-{short-sha}` (e.g., `develop-a35e43c`)
    - Title: `Dev build {short-sha} ({yyyy-mm-dd})`
-   - Asset: `app-debug.apk`
+   - Asset: `brain3-companion-develop-{short-sha}.apk` (e.g., `brain3-companion-develop-a35e43c.apk`)
    - Notes: source commit link + commit subject
 8. Prunes older `develop-*` pre-releases, keeping only the 10 most recent
 
@@ -215,7 +215,7 @@ Both dev and release APKs sideload the same way. There is no Play Store distribu
 1. Open the GitHub Releases page on the device's browser:
    - Latest dev pre-release: <https://github.com/WilliM233/brain3-companion/releases?q=prerelease%3Atrue>
    - Latest formal release: <https://github.com/WilliM233/brain3-companion/releases/latest>
-2. Tap the `app-debug.apk` (dev) or `app-release.apk` (release) asset to download
+2. Tap the `brain3-companion-develop-{short-sha}.apk` (dev) or `app-release.apk` (release) asset to download
 3. Open the downloaded APK from notifications or the file manager
 4. Confirm install when Android prompts
 
