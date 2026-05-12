@@ -30,6 +30,8 @@ import {
   type RegistrationStatus,
 } from '../lib/device-registration';
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import PendingSyncSection from '../components/PendingSyncSection';
+import ClearLocalCacheSection from '../components/ClearLocalCacheSection';
 
 const MIN_TOKEN_LENGTH = 8;
 
@@ -234,6 +236,10 @@ const SettingsPage: React.FC = () => {
                 Re-register
               </IonButton>
             </section>
+
+            <PendingSyncSection />
+
+            <ClearLocalCacheSection />
           </section>
         ) : (
           <section aria-label="Pairing form">
